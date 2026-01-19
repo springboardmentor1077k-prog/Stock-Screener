@@ -1,0 +1,71 @@
+{
+  "count": 6,
+  "items": [
+    {
+      "ticker": "AAPL",
+      "peg": 2.1,
+      "fcf_to_debt": 0.9183673469387755,
+      "price": 145.0,
+      "target_low": 150.0,
+      "rev_yoy": 0.04,
+      "ebitda_yoy": 0.05,
+      "earnings_within_days": 20,
+      "buyback": true
+    },
+    {
+      "ticker": "MSFT",
+      "peg": 2.5,
+      "fcf_to_debt": 1.4666666666666666,
+      "price": 355.0,
+      "target_low": 360.0,
+      "rev_yoy": 0.13,
+      "ebitda_yoy": 0.12,
+      "earnings_within_days": 25,
+      "buyback": true
+    },
+    {
+      "ticker": "NVDA",
+      "peg": 1.9,
+      "fcf_to_debt": 2.4,
+      "price": 88.0,
+      "target_low": 90.0,
+      "rev_yoy": 0.5,
+      "ebitda_yoy": 0.52,
+      "earnings_within_days": 18,
+      "buyback": true
+    },
+    {
+      "ticker": "AMD",
+      "peg": 2.8,
+      "fcf_to_debt": 1.8,
+      "price": 95.0,
+      "target_low": 100.0,
+      "rev_yoy": 0.2,
+      "ebitda_yoy": 0.22,
+      "earnings_within_days": 28,
+      "buyback": true
+    },
+    {
+      "ticker": "QCOM",
+      "peg": 1.7,
+      "fcf_to_debt": 1.3333333333333333,
+      "price": 128.0,
+      "target_low": 130.0,
+      "rev_yoy": 0.08,
+      "ebitda_yoy": 0.09,
+      "earnings_within_days": 10,
+      "buyback": true
+    },
+    {
+      "ticker": "CSCO",
+      "peg": 2.0,
+      "fcf_to_debt": 1.4,
+      "price": 48.0,
+      "target_low": 50.0,
+      "rev_yoy": 0.03,
+      "ebitda_yoy": 0.04,
+      "earnings_within_days": 22,
+      "buyback": true
+    }
+  ]
+}

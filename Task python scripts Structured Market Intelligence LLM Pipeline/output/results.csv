@@ -1,0 +1,7 @@
+ticker,peg,fcf_to_debt,price,target_low,rev_yoy,ebitda_yoy,earnings_within_days,buyback
+AAPL,2.1,0.9183673469387755,145.0,150.0,0.04,0.05,20,True
+MSFT,2.5,1.4666666666666666,355.0,360.0,0.13,0.12,25,True
+NVDA,1.9,2.4,88.0,90.0,0.5,0.52,18,True
+AMD,2.8,1.8,95.0,100.0,0.2,0.22,28,True
+QCOM,1.7,1.3333333333333333,128.0,130.0,0.08,0.09,10,True
+CSCO,2.0,1.4,48.0,50.0,0.03,0.04,22,True

@@ -1,0 +1,13 @@
+{
+  "industry_category": "Information Technology",
+  "filters": {
+    "peg_ratio_max": 3.0,
+    "fcf_to_debt_min": 0.25,
+    "price_vs_target": "<= target_low",
+    "revenue_yoy_positive": true,
+    "ebitda_yoy_positive": true,
+    "earnings_beat_likely": true,
+    "buyback_announced": true,
+    "next_earnings_within_days": 30
+  }
+}
