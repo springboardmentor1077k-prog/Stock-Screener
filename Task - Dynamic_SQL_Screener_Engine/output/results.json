@@ -1,0 +1,30 @@
+[
+  {
+    "symbol": "NVDA",
+    "sector": "Information Technology",
+    "price": 120.5,
+    "peg": 2.1,
+    "debt": 500,
+    "fcf": 2000,
+    "rev_yoy": 15.5,
+    "ebitda_yoy": 20.2,
+    "beats": 4,
+    "buyback": true,
+    "next_earnings_days": 25,
+    "target_low": 130.0
+  },
+  {
+    "symbol": "AMD",
+    "sector": "Information Technology",
+    "price": 160.0,
+    "peg": 2.5,
+    "debt": 300,
+    "fcf": 1200,
+    "rev_yoy": 10.1,
+    "ebitda_yoy": 12.0,
+    "beats": 3,
+    "buyback": false,
+    "next_earnings_days": 20,
+    "target_low": 170.0
+  }
+]
