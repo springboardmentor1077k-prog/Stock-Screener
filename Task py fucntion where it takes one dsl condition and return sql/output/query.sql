@@ -1,0 +1,1 @@
+SELECT * FROM stocks WHERE sector = 'Information Technology' AND peg < 3.0 AND (CASE WHEN debt = 0 THEN 0 ELSE fcf / debt END) >= 0.25 AND price <= target_low AND rev_yoy > 0 AND ebitda_yoy > 0 AND beats >= 3 AND buyback = TRUE AND next_earnings_days <= 30;
