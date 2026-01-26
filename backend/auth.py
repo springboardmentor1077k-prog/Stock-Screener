@@ -1,48 +1,139 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
 from backend.database import get_db
-from backend.security import hash_password, verify_password, create_token
+import hashlib
+import secrets
+import jwt
+import os
+from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+security = HTTPBearer(auto_error=False)
+
+JWT_SECRET = os.getenv("JWT_SECRET_KEY", "your-secret-key")
+JWT_ALGORITHM = "HS256"
+
+def hash_password_safe(password: str) -> str:
+    """Hash password using SHA-256 with salt."""
+    salt = secrets.token_hex(16)
+    password_hash = hashlib.sha256((password + salt).encode()).hexdigest()
+    return salt + ":" + password_hash
+
+def verify_password_safe(password: str, stored_hash: str) -> bool:
+    try:
+        salt, password_hash = stored_hash.split(":", 1)
+        test_hash = hashlib.sha256((password + salt).encode()).hexdigest()
+        return test_hash == password_hash
+    except:
+        return False
 
 class Signup(BaseModel):
-    email: EmailStr
+    name: str
+    email: str
     password: str
 
 class Login(BaseModel):
-    email: EmailStr
+    email: str
     password: str
+
+def create_access_token(email: str):
+    expire = datetime.utcnow() + timedelta(hours=24)
+    to_encode = {"email": email, "exp": expire}
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return encoded_jwt
+
+def verify_token(token: str):
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        email = payload.get("email")
+        if email is None:
+            return None
+        return email
+    except jwt.PyJWTError:
+        return None
 
 @router.post("/signup")
 def signup(data: Signup):
-    db = get_db()
-    cur = db.cursor()
-
-    cur.execute("SELECT user_id FROM users WHERE email=%s", (data.email,))
-    if cur.fetchone():
-        raise HTTPException(400, "User already exists")
-
-    cur.execute(
-        "INSERT INTO users (email, password_hash) VALUES (%s,%s)",
-        (data.email, hash_password(data.password))
-    )
-    db.commit()
-    cur.close()
-    db.close()
-    return {"message": "User created"}
+    conn = get_db()
+    cur = conn.cursor()
+    
+    try:
+        if len(data.name.strip()) == 0:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        if len(data.password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters long")
+        if len(data.password) > 100:
+            raise HTTPException(status_code=400, detail="Password is too long")
+            
+        cur.execute("SELECT email FROM users WHERE email = %s", (data.email,))
+        if cur.fetchone():
+            cur.close()
+            conn.close()
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        hashed_password = hash_password_safe(data.password)
+        cur.execute(
+            "INSERT INTO users (name, email, password_hash) VALUES (%s, %s, %s)",
+            (data.name.strip(), data.email.lower().strip(), hashed_password)
+        )
+        conn.commit()
+        token = create_access_token(data.email.lower().strip())
+        
+        cur.close()
+        conn.close()
+        return {"status": "user created", "token": token, "email": data.email.lower().strip(), "name": data.name.strip()}
+        
+    except HTTPException:
+        cur.close()
+        conn.close()
+        raise
+    except Exception as e:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @router.post("/login")
 def login(data: Login):
-    db = get_db()
-    cur = db.cursor()
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+    
+    try:
+        cur.execute("SELECT name, email, password_hash FROM users WHERE email = %s", (data.email.lower().strip(),))
+        user = cur.fetchone()
+        
+        cur.close()
+        conn.close()
+        
+        if not user or not verify_password_safe(data.password, user['password_hash']):
+            raise HTTPException(status_code=401, detail="Invalid email or password")        
+        token = create_access_token(data.email.lower().strip())
+        return {"status": "login successful", "token": token, "email": user['email'], "name": user['name']}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-    cur.execute(
-        "SELECT user_id, password_hash FROM users WHERE email=%s",
-        (data.email,)
-    )
-    user = cur.fetchone()
-
-    if not user or not verify_password(data.password, user[1]):
-        raise HTTPException(401, "Invalid credentials")
-
-    return {"access_token": create_token(user[0])}
+async def get_current_user_dependency(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """
+    Authentication dependency that validates JWT token.
+    """
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization token required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    email = verify_token(credentials.credentials)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    return {"email": email}

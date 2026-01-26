@@ -2,9 +2,12 @@ fastapi
 uvicorn
 mysql-connector-python
 python-dotenv
-passlib[bcrypt]
-python-jose
-python-multipart
-requests
+google-generativeai
+pydantic
 streamlit
+requests
+python-jose[cryptography]
+python-multipart
+PyJWT
+yfinance
 pandas
