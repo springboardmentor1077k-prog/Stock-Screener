@@ -76,6 +76,20 @@ def compile_condition(field: str, value: Any) -> Tuple[Optional[str], Dict[str, 
         
     return None, {}
 
+def compile_last_n_quarters_condition(value: Any) -> Tuple[Optional[str], Dict[str, Any]]:
+    """
+    Generates a SQL LIMIT clause based on the last n quarters condition.
+    Assumption: 'last n quarters' implies limiting the result set to n rows, 
+    potentially ordered by date if a date column existed. 
+    Here it maps to a simple LIMIT clause.
+    """
+    params = {}
+    if isinstance(value, int) and value > 0:
+        param_key = "limit_n"
+        params[param_key] = value
+        return f"LIMIT %({param_key})s", params
+    return None, {}
+
 def compile_dsl_to_sql(dsl: Dict[str, Any], table_name: str = "stocks") -> Tuple[str, Dict[str, Any]]:
     """
     Compiles the full DSL dictionary into a complete SQL query with bound parameters.
@@ -91,6 +105,7 @@ def compile_dsl_to_sql(dsl: Dict[str, Any], table_name: str = "stocks") -> Tuple
     """
     conditions = []
     all_params = {}
+    limit_clause = ""
     
     # Handle top-level fields
     if "industry_category" in dsl:
@@ -106,13 +121,20 @@ def compile_dsl_to_sql(dsl: Dict[str, Any], table_name: str = "stocks") -> Tuple
             if cond:
                 conditions.append(cond)
                 all_params.update(params)
+    
+    # Handle last n quarters condition (Limit)
+    if "last_n_quarters" in dsl:
+        limit_str, limit_params = compile_last_n_quarters_condition(dsl["last_n_quarters"])
+        if limit_str:
+            limit_clause = " " + limit_str
+            all_params.update(limit_params)
                 
     where_clause = " AND ".join(conditions)
     
     if where_clause:
-        sql = f"SELECT * FROM {table_name} WHERE {where_clause};"
+        sql = f"SELECT * FROM {table_name} WHERE {where_clause}{limit_clause};"
     else:
-        sql = f"SELECT * FROM {table_name};"
+        sql = f"SELECT * FROM {table_name}{limit_clause};"
         
     return sql, all_params
 
