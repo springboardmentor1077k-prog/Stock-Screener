@@ -1,1 +1,16 @@
 
+{
+  "and": [
+    {
+      "field": "net_profit",
+      "value": 15000000000.0,
+      "operator": ">",
+      "quarters": 2
+    },
+    {
+      "field": "sector",
+      "value": "Technology",
+      "operator": "="
+    }
+  ]
+}
