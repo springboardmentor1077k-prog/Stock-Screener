@@ -1,0 +1,35 @@
+{
+  "logic": "OR",
+  "filters": [
+    {
+      "logic": "AND",
+      "filters": [
+        {
+          "field": "sector",
+          "operator": "=",
+          "value": "Technology"
+        },
+        {
+          "field": "pe_ratio",
+          "operator": "<",
+          "value": 30.0
+        }
+      ]
+    },
+    {
+      "logic": "AND",
+      "filters": [
+        {
+          "field": "sector",
+          "operator": "=",
+          "value": "Energy"
+        },
+        {
+          "field": "dividend_yield",
+          "operator": ">",
+          "value": 2.0
+        }
+      ]
+    }
+  ]
+}
