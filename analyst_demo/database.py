@@ -1,19 +1,16 @@
 import sqlite3
 import random
-import os
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_NAME = os.path.join(BASE_DIR, "stocks.db")
+DB_NAME = "stocks.db"
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    # Drop tables if exist to reset state
-    cursor.execute("DROP TABLE IF EXISTS analyst_ratings")
+    # Drop table if exists to reset state
     cursor.execute("DROP TABLE IF EXISTS stocks")
 
-    # Create stocks table
+    # Create table
     cursor.execute("""
         CREATE TABLE stocks (
             symbol TEXT PRIMARY KEY,
@@ -25,7 +22,8 @@ def init_db():
         )
     """)
 
-    # Create analyst_ratings table
+    # Create analyst table
+    cursor.execute("DROP TABLE IF EXISTS analyst_ratings")
     cursor.execute("""
         CREATE TABLE analyst_ratings (
             symbol TEXT PRIMARY KEY,
@@ -36,133 +34,80 @@ def init_db():
         )
     """)
 
-    # 1. Define Base Data (Real Tickers)
-    base_stocks = [
-        # IT
-        ('AAPL', 'Apple Inc.', 'IT'), ('MSFT', 'Microsoft Corp.', 'IT'), ('GOOGL', 'Alphabet Inc.', 'IT'),
-        ('NVDA', 'NVIDIA Corp.', 'IT'), ('ORCL', 'Oracle Corp.', 'IT'), ('CSCO', 'Cisco Systems', 'IT'),
-        ('ADBE', 'Adobe Inc.', 'IT'), ('CRM', 'Salesforce', 'IT'), ('INTC', 'Intel Corp.', 'IT'),
-        ('AMD', 'Advanced Micro Devices', 'IT'), ('IBM', 'IBM', 'IT'), ('QCOM', 'Qualcomm', 'IT'),
-        # Finance
-        ('JPM', 'JPMorgan Chase', 'Finance'), ('BAC', 'Bank of America', 'Finance'), ('V', 'Visa Inc.', 'Finance'),
-        ('MA', 'Mastercard', 'Finance'), ('WFC', 'Wells Fargo', 'Finance'), ('C', 'Citigroup', 'Finance'),
-        ('GS', 'Goldman Sachs', 'Finance'), ('MS', 'Morgan Stanley', 'Finance'), ('AXP', 'American Express', 'Finance'),
-        ('BLK', 'BlackRock', 'Finance'),
-        # Healthcare
-        ('JNJ', 'Johnson & Johnson', 'Healthcare'), ('PFE', 'Pfizer Inc.', 'Healthcare'), ('UNH', 'UnitedHealth', 'Healthcare'),
-        ('LLY', 'Eli Lilly', 'Healthcare'), ('ABBV', 'AbbVie', 'Healthcare'), ('MRK', 'Merck & Co.', 'Healthcare'),
-        ('TMO', 'Thermo Fisher', 'Healthcare'), ('DHR', 'Danaher Corp.', 'Healthcare'), ('ABT', 'Abbott Labs', 'Healthcare'),
-        # Energy
-        ('XOM', 'Exxon Mobil', 'Energy'), ('CVX', 'Chevron Corp.', 'Energy'), ('SHEL', 'Shell PLC', 'Energy'),
-        ('TTE', 'TotalEnergies', 'Energy'), ('COP', 'ConocoPhillips', 'Energy'), ('SLB', 'Schlumberger', 'Energy'),
-        ('EOG', 'EOG Resources', 'Energy'), ('MPC', 'Marathon Petroleum', 'Energy'),
-        # Consumer Discretionary
-        ('AMZN', 'Amazon.com', 'Consumer Discretionary'), ('TSLA', 'Tesla Inc.', 'Consumer Discretionary'),
-        ('HD', 'Home Depot', 'Consumer Discretionary'), ('MCD', 'McDonalds', 'Consumer Discretionary'),
-        ('NKE', 'Nike Inc.', 'Consumer Discretionary'), ('SBUX', 'Starbucks', 'Consumer Discretionary'),
-        ('LOW', 'Lowe\'s', 'Consumer Discretionary'), ('TGT', 'Target Corp.', 'Consumer Discretionary'),
-        # Consumer Staples
-        ('PG', 'Procter & Gamble', 'Consumer Staples'), ('KO', 'Coca-Cola', 'Consumer Staples'),
-        ('PEP', 'PepsiCo', 'Consumer Staples'), ('COST', 'Costco', 'Consumer Staples'),
-        ('WMT', 'Walmart', 'Consumer Staples'),
-        # Industrials
-        ('CAT', 'Caterpillar', 'Industrials'), ('UNP', 'Union Pacific', 'Industrials'),
-        ('UPS', 'United Parcel Service', 'Industrials'), ('BA', 'Boeing', 'Industrials'),
-        ('GE', 'General Electric', 'Industrials')
+    # Sample data generation
+    sectors = ['IT', 'Finance', 'Healthcare', 'Energy', 'Consumer Discretionary']
+    
+    # Specific realistic records to ensure demo queries work
+    initial_data = [
+        ('AAPL', 'Apple Inc.', 'IT', 175.50, 2800.0, 28.5),
+        ('MSFT', 'Microsoft Corp.', 'IT', 320.0, 2400.0, 32.1),
+        ('GOOGL', 'Alphabet Inc.', 'IT', 140.0, 1800.0, 24.8),
+        ('NVDA', 'NVIDIA Corp.', 'IT', 450.0, 1100.0, 65.4),
+        ('JPM', 'JPMorgan Chase', 'Finance', 145.0, 420.0, 10.5),
+        ('BAC', 'Bank of America', 'Finance', 28.5, 230.0, 9.2),
+        ('V', 'Visa Inc.', 'Finance', 240.0, 500.0, 30.1),
+        ('JNJ', 'Johnson & Johnson', 'Healthcare', 155.0, 400.0, 15.6),
+        ('PFE', 'Pfizer Inc.', 'Healthcare', 32.0, 180.0, 12.4),
+        ('XOM', 'Exxon Mobil', 'Energy', 110.0, 440.0, 11.2),
+        ('CVX', 'Chevron Corp.', 'Energy', 160.0, 300.0, 10.8),
+        ('AMZN', 'Amazon.com', 'Consumer Discretionary', 130.0, 1300.0, 40.5),
+        ('TSLA', 'Tesla Inc.', 'Consumer Discretionary', 240.0, 750.0, 70.2),
     ]
 
-    all_stocks_data = []
-    all_analyst_data = []
-
-    disclaimers = [
-        "Investing involves risk. Past performance does not guarantee future results.",
-        "Analyst ratings are subjective opinions.",
-        "Market conditions may affect target prices.",
-        "High volatility expected in this sector.",
-        "Based on projected earnings growth.",
-        "Subject to regulatory approvals.",
-        "Currency fluctuations may impact returns.",
-        "Supply chain risks remain a factor."
-    ]
-
-    # Generate data for defined stocks + some synthetic ones to reach ~100 records
-    
-    # First, process the real base stocks
-    for symbol, name, sector in base_stocks:
-        price = round(random.uniform(20.0, 500.0), 2)
-        market_cap = round(random.uniform(10.0, 3000.0), 2) # Billions
-        pe_ratio = round(random.uniform(5.0, 80.0), 2)
-        
-        all_stocks_data.append((symbol, name, sector, price, market_cap, pe_ratio))
-        
-        # Generate Analyst Data
-        # Target price logic: +/- 30% of current price
-        target_price = round(price * random.uniform(0.7, 1.4), 2)
-        upside = (target_price - price) / price
-        
-        if upside > 0.20:
-            recommendation = "Strong Buy"
-        elif upside > 0.10:
-            recommendation = "Buy"
-        elif upside > -0.10:
-            recommendation = "Hold"
-        elif upside > -0.20:
-            recommendation = "Sell"
-        else:
-            recommendation = "Strong Sell"
-            
-        disclaimer = random.choice(disclaimers)
-        all_analyst_data.append((symbol, target_price, recommendation, disclaimer))
-
-    # Second, generate synthetic stocks to bulk up the data
-    sectors = ['IT', 'Finance', 'Healthcare', 'Energy', 'Consumer Discretionary', 'Industrials', 'Utilities', 'Materials']
-    
-    for i in range(1, 51): # Add 50 synthetic stocks
-        symbol = f"SYN{i:03d}"
-        sector = random.choice(sectors)
-        name = f"Synthetic {sector} Corp {i}"
-        
-        price = round(random.uniform(10.0, 200.0), 2)
-        market_cap = round(random.uniform(1.0, 50.0), 2)
-        pe_ratio = round(random.uniform(5.0, 50.0), 2)
-        
-        all_stocks_data.append((symbol, name, sector, price, market_cap, pe_ratio))
-        
-        # Analyst Data for synthetic
-        target_price = round(price * random.uniform(0.6, 1.5), 2)
-        upside = (target_price - price) / price
-        
-        if upside > 0.20:
-            recommendation = "Strong Buy"
-        elif upside > 0.10:
-            recommendation = "Buy"
-        elif upside > -0.10:
-            recommendation = "Hold"
-        elif upside > -0.20:
-            recommendation = "Sell"
-        else:
-            recommendation = "Strong Sell"
-            
-        disclaimer = random.choice(disclaimers)
-        all_analyst_data.append((symbol, target_price, recommendation, disclaimer))
-
-    # Batch Insert Stocks
     cursor.executemany("""
         INSERT INTO stocks (symbol, company_name, sector, price, market_cap, pe_ratio)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, all_stocks_data)
+    """, initial_data)
 
-    # Batch Insert Analyst Ratings
+    # Insert mock analyst data for 5 stocks
+    analyst_data = [
+        ('AAPL', 200.0, 'Strong Buy', 'Investing involves risk. Past performance does not guarantee future results.'),
+        ('MSFT', 400.0, 'Buy', 'Analyst ratings are subjective opinions.'),
+        ('GOOGL', 160.0, 'Buy', 'Market conditions may affect target prices.'),
+        ('NVDA', 600.0, 'Strong Buy', 'High volatility expected in semiconductor sector.'),
+        ('TSLA', 300.0, 'Hold', 'Automotive industry faces supply chain challenges.')
+    ]
+    
     cursor.executemany("""
         INSERT INTO analyst_ratings (symbol, target_price, recommendation, disclaimer)
         VALUES (?, ?, ?, ?)
-    """, all_analyst_data)
+    """, analyst_data)
+
+    # Add more random data to reach "hundreds" or at least a decent amount
+    extra_companies = [
+        ('ORCL', 'Oracle', 'IT'), ('CSCO', 'Cisco', 'IT'), ('ADBE', 'Adobe', 'IT'),
+        ('CRM', 'Salesforce', 'IT'), ('INTC', 'Intel', 'IT'), ('AMD', 'AMD', 'IT'),
+        ('WFC', 'Wells Fargo', 'Finance'), ('C', 'Citigroup', 'Finance'), ('GS', 'Goldman Sachs', 'Finance'),
+        ('MS', 'Morgan Stanley', 'Finance'), ('AXP', 'American Express', 'Finance'),
+        ('UNH', 'UnitedHealth', 'Healthcare'), ('LLY', 'Eli Lilly', 'Healthcare'), ('ABBV', 'AbbVie', 'Healthcare'),
+        ('MRK', 'Merck', 'Healthcare'), ('TMO', 'Thermo Fisher', 'Healthcare'),
+        ('SHEL', 'Shell', 'Energy'), ('TTE', 'TotalEnergies', 'Energy'), ('COP', 'ConocoPhillips', 'Energy'),
+        ('SLB', 'Schlumberger', 'Energy'), ('EOG', 'EOG Resources', 'Energy'),
+        ('HD', 'Home Depot', 'Consumer Discretionary'), ('MCD', 'McDonalds', 'Consumer Discretionary'),
+        ('NKE', 'Nike', 'Consumer Discretionary'), ('SBUX', 'Starbucks', 'Consumer Discretionary')
+    ]
+
+    extra_data = []
+    # Generate ~200 records
+    count = 0
+    for _ in range(8):
+        for symbol_base, name_base, sector in extra_companies:
+            count += 1
+            symbol = f"{symbol_base}{count}"
+            name = f"{name_base} {count}"
+            
+            price = round(random.uniform(20, 500), 2)
+            market_cap = round(random.uniform(50, 1000), 2)
+            pe_ratio = round(random.uniform(5, 80), 2)
+            extra_data.append((symbol, name, sector, price, market_cap, pe_ratio))
+
+    cursor.executemany("""
+        INSERT INTO stocks (symbol, company_name, sector, price, market_cap, pe_ratio)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, extra_data)
 
     conn.commit()
-    print(f"Database {DB_NAME} initialized successfully.")
-    print(f"Inserted {len(all_stocks_data)} stock records.")
-    print(f"Inserted {len(all_analyst_data)} analyst rating records.")
-    
+    print(f"Database {DB_NAME} initialized with {len(initial_data) + len(extra_data)} records.")
     conn.close()
 
 if __name__ == "__main__":
