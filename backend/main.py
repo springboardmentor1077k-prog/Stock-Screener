@@ -13,26 +13,21 @@ app = FastAPI()
 users_db = {}
 token_store = {}
 
-
 class RegisterRequest(BaseModel):
     username: str
     password: str
-
 
 class LoginRequest(BaseModel):
     username: str
     password: str
 
-
 class ScreenRequest(BaseModel):
     query: str
-
 
 @app.post("/register")
 def register(data: RegisterRequest):
     users_db[data.username] = data.password
     return {"message": "registered"}
-
 
 @app.post("/login")
 def login(data: LoginRequest):
@@ -42,7 +37,6 @@ def login(data: LoginRequest):
     token = str(uuid.uuid4())
     token_store[token] = data.username
     return {"token": token}
-
 
 @app.post("/screen")
 def screen(data: ScreenRequest, token: str = Header(None)):
@@ -57,6 +51,7 @@ def screen(data: ScreenRequest, token: str = Header(None)):
         results = get_screening_data(where_clause)
 
         return {
+            "type": dsl["type"],
             "count": len(results),
             "data": results
         }

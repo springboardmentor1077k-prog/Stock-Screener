@@ -3,7 +3,23 @@ import re
 def parse_query_to_dsl(query: str):
     q = query.lower()
 
-    # SNAPSHOT: PE
+    # -------- QUARTERLY QUERY --------
+    if "quarter" in q:
+        num_match = re.search(r"(\d+)", q)
+        n = int(num_match.group()) if num_match else 4
+
+        if "profit" in q:
+            return {
+                "type": "quarterly",
+                "metric": "net_profit",
+                "operator": ">",
+                "value": 0,
+                "n": n
+            }
+
+        raise ValueError("Unsupported quarterly query")
+
+    # -------- SNAPSHOT QUERY --------
     if "pe" in q:
         value = re.search(r"\d+", q)
         if not value:
@@ -17,7 +33,6 @@ def parse_query_to_dsl(query: str):
             "logic": "AND"
         }
 
-    # SNAPSHOT: PRICE
     if "price" in q:
         value = re.search(r"\d+", q)
         if not value:
@@ -31,5 +46,4 @@ def parse_query_to_dsl(query: str):
             "logic": "AND"
         }
 
-    raise ValueError("Only snapshot queries supported right now")
-
+    raise ValueError("Query not supported")

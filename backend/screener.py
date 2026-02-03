@@ -1,16 +1,22 @@
+from quarterly_compiler import build_last_n_quarters_subquery
+
 def build_where_clause(dsl):
-    conditions = dsl["conditions"]
-    logic = dsl["logic"]
+    # -------- SNAPSHOT --------
+    if dsl["type"] == "snapshot":
+        parts = []
+        for cond in dsl["conditions"]:
+            parts.append(
+                f"{cond['field']} {cond['operator']} {cond['value']}"
+            )
+        return " AND " + " AND ".join(parts)
 
-    sql_parts = []
+    # -------- QUARTERLY --------
+    if dsl["type"] == "quarterly":
+        return " AND " + build_last_n_quarters_subquery(
+            metric=dsl["metric"],
+            operator=dsl["operator"],
+            value=dsl["value"],
+            n=dsl["n"]
+        )
 
-    for cond in conditions:
-        field = cond["field"]
-        operator = cond["operator"]
-        value = cond["value"]
-
-        sql_parts.append(f"{field} {operator} {value}")
-
-    # ❗ NO "WHERE" HERE
-    return " AND " + f" {logic} ".join(sql_parts)
-
+    return ""
