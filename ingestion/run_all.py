@@ -1,6 +1,16 @@
 import sys
 import time
 from datetime import datetime
+import yfinance as yf
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("✓ Environment variables loaded")
+except ImportError:
+    print("⚠️ python-dotenv not installed, relying on system environment")
+except Exception as e:
+    print(f"⚠️ Error loading environment: {str(e)}")
 
 def print_header(title):
     """Print a formatted header."""
@@ -13,39 +23,66 @@ def print_step(step_num, title):
     print(f"\n[STEP {step_num}] {title}")
     print("-" * 40)
 
-def check_yfinance():
-    """Check if yfinance is installed and working."""
+def check_data_sources():
+    """Check availability of both yfinance and Alpha Vantage."""
+    sources = {'yfinance': False, 'alpha_vantage': False}    
     try:
-        import yfinance as yf
-        print("✓ yfinance is installed and ready")
-        
         ticker = yf.Ticker("AAPL")
         info = ticker.info
         if info and 'symbol' in info:
-            print("✓ yfinance connection test successful")
-            return True
+            print("✓ yfinance is available and working")
+            sources['yfinance'] = True
         else:
-            print("✗ yfinance connection test failed")
-            return False
-            
+            print("⚠️ yfinance installed but not responding properly")
     except ImportError:
-        print("✗ yfinance is not installed. Please install it with:")
-        print("  pip install yfinance")
-        return False
+        print("⚠️ yfinance not installed")
     except Exception as e:
-        print(f"✗ yfinance test error: {str(e)}")
-        return False
+        print(f"⚠️ yfinance error: {str(e)}")
+    
+    try:
+        import os
+        api_key = os.getenv('ALPHA_VANTAGE_API_KEY')
+        if api_key and api_key.strip():
+            print(f"✓ Alpha Vantage API key found: {api_key[:8]}...")
+            sources['alpha_vantage'] = True
+        else:
+            print("⚠️ Alpha Vantage API key not found or empty in .env file")
+            print("  Please check ALPHA_VANTAGE_API_KEY in your .env file")
+    except Exception as e:
+        print(f"⚠️ Error checking Alpha Vantage: {str(e)}")
+    
+    return sources
 
 def main():
-    """Run complete data ingestion pipeline using yfinance."""
+    """Run complete data ingestion pipeline using hybrid approach."""
     start_time = datetime.now()
     
-    print_header("STOCK SCREENER DATA INGESTION PIPELINE (yfinance)")
+    print_header("STOCK SCREENER DATA INGESTION PIPELINE (Hybrid)")
     print(f"Started at: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print("🔄 Using yfinance (primary) + Alpha Vantage (fallback)")
     
-    if not check_yfinance():
-        print("\nPlease install yfinance and try again:")
-        print("  pip install yfinance")
+    sources = check_data_sources()
+    
+    if not sources['yfinance'] and not sources['alpha_vantage']:
+        print("\n❌ No data sources available!")
+        print("Please install yfinance: pip install yfinance")
+        print("And/or add ALPHA_VANTAGE_API_KEY to your .env file")
+        sys.exit(1)
+    
+    if sources['yfinance'] and sources['alpha_vantage']:
+        print("\n✅ Hybrid mode: yfinance (primary) + Alpha Vantage (fallback)")
+    elif sources['yfinance']:
+        print("\n📊 yfinance-only mode (Alpha Vantage not available)")
+    else:
+        print("\n📡 Alpha Vantage-only mode (yfinance not available)")
+    try:
+        from db import get_db
+        db = get_db()
+        db.close()
+        print("✓ Database connection successful")
+    except Exception as e:
+        print(f"❌ Database connection failed: {str(e)}")
+        print("Please check your database configuration in .env file")
         sys.exit(1)
     
     try:
@@ -53,15 +90,16 @@ def main():
         from ingest_stocks import ingest_stocks
         ingest_stocks()
         
-        print("\nWaiting 5 seconds before next step...")
-        time.sleep(5)
+        print("\nWaiting 3 seconds before next step...")
+        time.sleep(3)
         
         print_step(2, "Ingesting Fundamental Data")
         from ingest_fundamentals import ingest_fundamentals
         ingest_fundamentals()
         
-        print("\nWaiting 5 seconds before next step...")
-        time.sleep(5)
+        
+        print("\nWaiting 3 seconds before next step...")
+        time.sleep(3)
         
         print_step(3, "Ingesting Quarterly Financial Data")
         from ingest_quarterly_financials import ingest_quarterly
@@ -76,12 +114,19 @@ def main():
         print(f"Total duration: {duration}")
         print("\n✅ All data ingestion completed successfully!")
         print("\nYour stock screener database is now populated with:")
-        print("  • Stock information (30 companies from US and Indian markets)")
-        print("  • Fundamental metrics (PE ratios, EPS, market cap, ROE, etc.)")
-        print("  • Historical quarterly financial data")
-        print("  • Real-time data from yfinance (no API limits!)")
+        print("  • Stock information (50 major companies) - yfinance + Alpha Vantage")
+        print("  • Comprehensive fundamental metrics - yfinance + Alpha Vantage fallback")
+        print("  • Historical quarterly financial data - Alpha Vantage (more reliable)")
+        print("  • Multi-region coverage (US, India, China, Europe)")
+        print("  • Optimized hybrid approach for maximum data quality")
         
-        print("\n🚀 You can now use your AI stock screener with rich data!")
+        print("\n🚀 You can now use your AI stock screener!")
+        print("💡 Try queries like:")
+        print("  • 'Tech stocks with PE < 25'")
+        print("  • 'Financial stocks with positive profit last 4 quarters'")
+        print("  • 'Large cap stocks with dividend yield > 2%'")
+        print("  • 'Healthcare stocks with profit margins > 15%'")
+        print("  • 'International ADRs with beta < 1.5'")
         
     except KeyboardInterrupt:
         print("\n\n⚠️  Ingestion interrupted by user (Ctrl+C)")

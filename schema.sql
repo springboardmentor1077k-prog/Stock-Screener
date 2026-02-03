@@ -14,6 +14,9 @@ CREATE TABLE stocks (
     sector VARCHAR(50),
     industry VARCHAR(50),
     exchange VARCHAR(20),
+    country VARCHAR(50) DEFAULT 'US',
+    market_cap_category ENUM('Mega', 'Large', 'Mid', 'Small', 'Micro') DEFAULT 'Large',
+    is_adr BOOLEAN DEFAULT FALSE
 );
 CREATE TABLE fundamentals (
     fundamental_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -23,6 +26,11 @@ CREATE TABLE fundamentals (
     market_cap BIGINT,
     roe DECIMAL(5,2),
     debt_equity DECIMAL(5,2),
+    price_to_book DECIMAL(10,2),
+    dividend_yield DECIMAL(5,4),
+    profit_margin DECIMAL(5,4),
+    beta DECIMAL(5,2),
+    current_price DECIMAL(10,2),
     updated_at TIMESTAMP,
     CONSTRAINT fk_fund_stock
         FOREIGN KEY (stock_id)
@@ -45,19 +53,33 @@ CREATE TABLE quarterly_finance (
 );
 CREATE TABLE portfolio (
     portfolio_id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT,
-    stock_id INT,
-    quantity INT,
-    avg_price DECIMAL(10,2),
-    UNIQUE (user_id, stock_id),
+    user_id INT NOT NULL,
+    name VARCHAR(100) NOT NULL DEFAULT 'My Portfolio',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_port_user
         FOREIGN KEY (user_id)
         REFERENCES users(user_id)
         ON DELETE CASCADE,
-    CONSTRAINT fk_port_stock
+    UNIQUE (user_id, name)
+);
+
+CREATE TABLE portfolio_holdings (
+    holding_id INT AUTO_INCREMENT PRIMARY KEY,
+    portfolio_id INT NOT NULL,
+    stock_id INT NOT NULL,
+    quantity INT NOT NULL CHECK (quantity >= 0),
+    avg_price DECIMAL(10,2) NOT NULL CHECK (avg_price >= 0),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_ph_portfolio
+        FOREIGN KEY (portfolio_id)
+        REFERENCES portfolio(portfolio_id)
+        ON DELETE CASCADE,
+    CONSTRAINT fk_ph_stock
         FOREIGN KEY (stock_id)
         REFERENCES stocks(stock_id)
-        ON DELETE CASCADE
+        ON DELETE CASCADE,
+    UNIQUE (portfolio_id, stock_id)
 );
 CREATE TABLE alerts (
     alert_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -76,10 +98,25 @@ CREATE TABLE alerts (
         REFERENCES stocks(stock_id)
         ON DELETE CASCADE
 );
+
+CREATE TABLE analyst_targets (
+    target_id INT AUTO_INCREMENT PRIMARY KEY,
+    stock_id INT NOT NULL,
+    target_price DECIMAL(10,2),
+    current_price DECIMAL(10,2),
+    recommendation ENUM('Buy', 'Hold', 'Sell'),
+    analyst_firm VARCHAR(100),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_target_stock
+        FOREIGN KEY (stock_id)
+        REFERENCES stocks(stock_id)
+        ON DELETE CASCADE
+);
 CREATE USER 'stock_user'@'localhost' IDENTIFIED BY 'Stock@123';
 
 GRANT SELECT, INSERT, UPDATE, DELETE
 ON stock_db.*
 TO 'stock_user'@'localhost';
+
 
 FLUSH PRIVILEGES;

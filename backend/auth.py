@@ -55,8 +55,8 @@ def verify_token(token: str):
 
 @router.post("/signup")
 def signup(data: Signup):
-    conn = get_db()
-    cur = conn.cursor()
+    conn = None
+    cur = None
     
     try:
         if len(data.name.strip()) == 0:
@@ -65,11 +65,12 @@ def signup(data: Signup):
             raise HTTPException(status_code=400, detail="Password must be at least 6 characters long")
         if len(data.password) > 100:
             raise HTTPException(status_code=400, detail="Password is too long")
+        
+        conn = get_db()
+        cur = conn.cursor()
             
         cur.execute("SELECT email FROM users WHERE email = %s", (data.email,))
         if cur.fetchone():
-            cur.close()
-            conn.close()
             raise HTTPException(status_code=400, detail="Email already registered")
         
         hashed_password = hash_password_safe(data.password)
@@ -80,30 +81,33 @@ def signup(data: Signup):
         conn.commit()
         token = create_access_token(data.email.lower().strip())
         
-        cur.close()
-        conn.close()
         return {"status": "user created", "token": token, "email": data.email.lower().strip(), "name": data.name.strip()}
         
     except HTTPException:
-        cur.close()
-        conn.close()
+        if conn:
+            conn.rollback()
         raise
     except Exception as e:
-        cur.close()
-        conn.close()
+        if conn:
+            conn.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
 @router.post("/login")
 def login(data: Login):
-    conn = get_db()
-    cur = conn.cursor(dictionary=True)
+    conn = None
+    cur = None
     
     try:
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+        
         cur.execute("SELECT name, email, password_hash FROM users WHERE email = %s", (data.email.lower().strip(),))
         user = cur.fetchone()
-        
-        cur.close()
-        conn.close()
         
         if not user or not verify_password_safe(data.password, user['password_hash']):
             raise HTTPException(status_code=401, detail="Invalid email or password")        
@@ -113,13 +117,16 @@ def login(data: Login):
     except HTTPException:
         raise
     except Exception as e:
-        cur.close()
-        conn.close()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
 
-async def get_current_user_dependency(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """
-    Authentication dependency that validates JWT token.
+    Authentication dependency that validates JWT token and returns user info.
     """
     if not credentials:
         raise HTTPException(
@@ -136,4 +143,34 @@ async def get_current_user_dependency(credentials: HTTPAuthorizationCredentials 
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    return {"email": email}
+    conn = None
+    cur = None
+    
+    try:
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+        
+        cur.execute("SELECT user_id, name, email FROM users WHERE email = %s", (email,))
+        user = cur.fetchone()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found",
+            )
+        
+        return {
+            "user_id": user["user_id"],
+            "email": user["email"],
+            "name": user["name"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()

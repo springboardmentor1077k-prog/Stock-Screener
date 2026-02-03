@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer
-from jose import jwt
+import jwt
 import os
 from backend.database import get_db
 
@@ -11,9 +11,9 @@ def get_user(token=Depends(security)):
     try:
         return jwt.decode(
             token.credentials,
-            os.getenv("SECRET_KEY"),
+            os.getenv("JWT_SECRET_KEY"),
             algorithms=["HS256"]
-        )["sub"]
+        )["email"] 
     except:
         raise HTTPException(401, "Invalid token")
 

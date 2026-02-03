@@ -8,33 +8,90 @@ client = OpenAI(
 )
 
 PROMPT = """
-You are a STRICT financial query parser that converts natural language to JSON DSL.
+You are a financial query parser that converts natural language to JSON DSL with support for complex nested queries.
 
-CRITICAL RULES:
-1. ONLY support these exact fields: pe_ratio, net_profit
-2. ONLY support these operators: >, >=, <, <=, =
-3. REJECT queries asking for:
-   - Future data (forward PE, future profits, predictions)
-   - Guaranteed/certain outcomes
-   - Data we don't have (revenue, growth rates, etc.)
-4. For quarterly conditions, only support "positive net profit for last N quarters"
+SUPPORTED FIELDS AND OPERATIONS:
+1. PE ratio: pe_ratio with operators >, >=, <, <=, =
+   - Accept variations: "PE ratio", "P/E ratio", "pe ratio", "price to earnings"
+   - Accept phrases: "more than", "greater than", "above", "over", "less than", "below", "under", "equal to"
 
-If the query asks for unsupported data or concepts, return:
+2. Price to Book: price_to_book with operators >, >=, <, <=, =
+   - Accept variations: "P/B ratio", "price to book", "book value ratio"
+
+3. Dividend Yield: dividend_yield with operators >, >=, <, <=, =
+   - Accept variations: "dividend yield", "dividend", "yield"
+
+4. Beta: beta with operators >, >=, <, <=, =
+   - Accept variations: "beta", "volatility", "risk"
+
+5. Profit Margin: profit_margin with operators >, >=, <, <=, =
+   - Accept variations: "profit margin", "profitability", "margins"
+
+6. Market Cap Category: market_cap_category with = operator
+   - Accept values: "Mega", "Large", "Mid", "Small", "Micro"
+   - Accept variations: "large cap", "small cap", "mega cap"
+
+7. Country: country with = operator
+   - Accept values: "US", "India", "China", etc.
+   - Accept variations: "American", "Indian", "Chinese"
+
+8. ADR Status: is_adr with = operator
+   - Accept variations: "ADR", "American Depositary Receipt"
+
+9. Quarterly net profit: net_profit with quarterly conditions
+   - Accept variations: "profit", "net profit", "earnings", "net earnings"
+   - Accept phrases: "positive profit", "profitable", "positive earnings", "making profit"
+   - Accept time phrases: "last N quarters", "past N quarters", "for N quarters", "over N quarters"
+
+CONVERT NATURAL LANGUAGE:
+- "more than 15" -> operator: ">", value: 15
+- "greater than or equal to 10" -> operator: ">=", value: 10
+- "positive profit for last 8 quarters" -> type: "quarterly", field: "net_profit", condition: "positive", last_n: 8
+- "profitable for 4 quarters" -> type: "quarterly", field: "net_profit", condition: "positive", last_n: 4
+
+REJECT ONLY IF asking for:
+- Future data (forward PE, future profits, predictions)
+- Guaranteed/certain outcomes
+- Unsupported fields (revenue, growth rates, market cap comparisons, etc.)
+
+If unsupported, return:
 {"error": "UNSUPPORTED_QUERY", "message": "This query asks for data we don't have. Try: 'PE ratio > 15' or 'positive profit last 4 quarters'"}
 
-Valid example: "PE ratio > 5 and positive profit last 4 quarters"
-Invalid examples: "future PE ratio", "guaranteed profit", "revenue growth"
-
-Output ONLY valid JSON, no explanations.
-
-Valid format:
+SIMPLE DSL FORMAT (preferred):
 {
   "conditions": [
-    { "field": "pe_ratio", "operator": ">=", "value": 5 },
-    { "field": "net_profit", "type": "quarterly", "condition": "positive", "last_n": 4 }
+    { "field": "pe_ratio", "operator": ">", "value": 15 },
+    { "field": "net_profit", "type": "quarterly", "condition": "positive", "last_n": 8 }
   ],
   "logic": "AND"
 }
+
+NESTED DSL FORMAT (for complex queries):
+{
+  "type": "group",
+  "logic": "AND",
+  "conditions": [
+    {
+      "type": "condition",
+      "field": "pe_ratio",
+      "operator": ">",
+      "value": 15
+    },
+    {
+      "type": "quarterly",
+      "field": "net_profit",
+      "condition": "positive",
+      "last_n": 8
+    }
+  ]
+}
+
+Examples of VALID queries:
+- "pe ratio more than 15 and positive profit for last 8 quarters"
+- "P/E ratio above 10 and profitable for 4 quarters"
+- "price to earnings over 20 or making profit last 6 quarters"
+
+Output ONLY valid JSON, no explanations.
 """
 
 def parse_query_to_dsl(query: str) -> dict:

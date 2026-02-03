@@ -1,118 +1,167 @@
-import yfinance as yf
+import requests
 import time
-import pandas as pd
+import os
 from db import get_db
+from dotenv import load_dotenv
+load_dotenv()
+ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
+ALPHA_VANTAGE_BASE_URL = "https://www.alphavantage.co/query"
 
-def safe_int(value, default=0):
-    """Safely convert value to int."""
-    if pd.isna(value) or value in [None, "None", "N/A", "-", ""]:
-        return default
+ALPHA_REQUESTS_MADE = 0
+MAX_ALPHA_REQUESTS = 20 
+def safe_int(value):
     try:
-        return int(float(value))
-    except (ValueError, TypeError):
-        return default
+        return int(float(value)) if value and value != 'None' else 0
+    except:
+        return 0
+
+def get_alpha_vantage_quarterly(symbol):
+    """Get quarterly income statement from Alpha Vantage."""
+    global ALPHA_REQUESTS_MADE
+    
+    if ALPHA_REQUESTS_MADE >= MAX_ALPHA_REQUESTS:
+        print(f"  ⚠️ Alpha Vantage limit reached ({MAX_ALPHA_REQUESTS})")
+        return None
+    
+    if not ALPHA_VANTAGE_API_KEY:
+        print("  ⚠️ Alpha Vantage API key not found")
+        return None
+    
+    try:
+        url = f"{ALPHA_VANTAGE_BASE_URL}?function=INCOME_STATEMENT&symbol={symbol}&apikey={ALPHA_VANTAGE_API_KEY}"
+        response = requests.get(url, timeout=15)
+        ALPHA_REQUESTS_MADE += 1
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "Error Message" in data:
+                print(f"  ⚠️ Alpha Vantage error: {data['Error Message']}")
+                return None
+            elif "Note" in data:
+                print(f"  ⚠️ Rate limit hit: {data['Note']}")
+                return None
+            
+            quarterly_reports = data.get("quarterlyReports", [])
+            
+            if not quarterly_reports:
+                print(f"  ⚠️ No quarterly reports found")
+                return None
+            
+            quarters_data = []
+            for report in quarterly_reports[:20]:
+                try:
+                    fiscal_date = report.get('fiscalDateEnding', '')
+                    if not fiscal_date:
+                        continue
+                    
+                    year = int(fiscal_date[:4])
+                    month = int(fiscal_date[5:7])
+                    quarter = f"Q{((month - 1) // 3) + 1}"
+                    revenue = safe_int(report.get('totalRevenue'))
+                    ebitda = safe_int(report.get('ebitda'))
+                    net_profit = safe_int(report.get('netIncome'))
+                    if revenue > 0 or net_profit != 0:
+                        quarters_data.append({
+                            'year': year,
+                            'quarter': quarter,
+                            'revenue': revenue,
+                            'ebitda': ebitda,
+                            'net_profit': net_profit
+                        })
+                
+                except Exception as e:
+                    print(f"  ⚠️ Error processing quarter: {str(e)}")
+                    continue
+            
+            return quarters_data if quarters_data else None
+            
+    except Exception as e:
+        print(f"  ⚠️ Alpha Vantage request error: {str(e)}")
+        return None
 
 def ingest_quarterly():
-    """Ingest quarterly financial data for all stocks in database using yfinance."""
-    print("Starting quarterly financials ingestion using yfinance...")
+    """Ingest quarterly financial data using Alpha Vantage exclusively."""
+    print("Starting quarterly financials ingestion using Alpha Vantage...")
+    print("📡 Alpha Vantage provides more reliable quarterly data than yfinance")
+    print(f"API request limit: {MAX_ALPHA_REQUESTS} requests")
+    
+    if not ALPHA_VANTAGE_API_KEY:
+        print("❌ Alpha Vantage API key not found in .env file")
+        print("Please add ALPHA_VANTAGE_API_KEY to continue")
+        return
     
     db = get_db()
     cur = db.cursor(dictionary=True)
-
+    
     cur.execute("SELECT stock_id, symbol FROM stocks ORDER BY stock_id")
     stocks = cur.fetchall()
-
-    if not stocks:
-        print("No stocks found in database. Please run ingest_stocks.py first.")
-        return
-
-    print(f"Processing quarterly financials for {len(stocks)} stocks...")
     
-    successful_updates = 0
-    failed_updates = 0
-    total_quarters_processed = 0
-
+    if not stocks:
+        print("No stocks found. Run ingest_stocks.py first.")
+        return
+    
+    successful = 0
+    failed = 0
+    total_quarters = 0
+    
     for i, stock in enumerate(stocks):
-        print(f"\nProcessing quarterly financials for {stock['symbol']} ({i+1}/{len(stocks)})...")
+        print(f"\nProcessing {stock['symbol']} ({i+1}/{len(stocks)})...")        
+        if ALPHA_REQUESTS_MADE >= MAX_ALPHA_REQUESTS:
+            print(f"⚠️ Reached Alpha Vantage request limit. Stopping at {stock['symbol']}")
+            break
+        quarterly_data = get_alpha_vantage_quarterly(stock['symbol'])
         
-        try:
-            ticker = yf.Ticker(stock['symbol'])
-            
-            quarterly_financials = ticker.quarterly_financials
-            
-            if quarterly_financials is None or quarterly_financials.empty:
-                print(f"✗ No quarterly financial data found for {stock['symbol']}")
-                failed_updates += 1
-                continue
-
-            quarters_inserted = 0
-            
-            for date, data in quarterly_financials.items():
-                try:
-                    # Extract date information
-                    year = date.year
-                    quarter_num = ((date.month - 1) // 3) + 1
-                    quarter = f"Q{quarter_num}"
-                    
-                    revenue = safe_int(data.get('Total Revenue', 0))
-                    if revenue == 0:
-                        revenue = safe_int(data.get('Revenue', 0))
-                    
-                    ebitda = safe_int(data.get('EBITDA', 0))
-                    if ebitda == 0:
-                        operating_income = safe_int(data.get('Operating Income', 0))
-                        depreciation = safe_int(data.get('Depreciation', 0))
-                        ebitda = operating_income + depreciation
-                    
-                    net_income = safe_int(data.get('Net Income', 0))
-                    if net_income == 0:
-                        net_income = safe_int(data.get('Net Income From Continuing Ops', 0))
-                    
-                    cur.execute("""
-                        INSERT IGNORE INTO quarterly_finance
-                        (stock_id, quarter, year, revenue, ebitda, net_profit)
-                        VALUES (%s,%s,%s,%s,%s,%s)
-                    """, (
-                        stock["stock_id"],
-                        quarter,
-                        year,
-                        revenue,
-                        ebitda,
-                        net_income
-                    ))
-                    
-                    quarters_inserted += 1
-                    total_quarters_processed += 1
-                    
-                except Exception as e:
-                    print(f"  ⚠️  Error processing quarter {date}: {str(e)}")
-                    continue
-
-            if quarters_inserted > 0:
-                print(f"✓ Inserted {quarters_inserted} quarters for {stock['symbol']}")
-                successful_updates += 1
-            else:
-                print(f"✗ No quarters inserted for {stock['symbol']}")
-                failed_updates += 1
-            
-            time.sleep(0.5)
-                
-        except Exception as e:
-            print(f"✗ Error processing quarterly financials for {stock['symbol']}: {str(e)}")
-            failed_updates += 1
+        if not quarterly_data:
+            print(f"✗ No quarterly data for {stock['symbol']}")
+            failed += 1
             continue
-
+        quarters_inserted = 0
+        for quarter_info in quarterly_data:
+            try:
+                revenue = quarter_info['revenue']
+                ebitda = quarter_info['ebitda']
+                net_profit = quarter_info['net_profit']
+                
+                cur.execute("""
+                    INSERT IGNORE INTO quarterly_finance
+                    (stock_id, quarter, year, revenue, ebitda, net_profit)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                """, (
+                    stock["stock_id"],
+                    quarter_info['quarter'],
+                    quarter_info['year'],
+                    revenue,
+                    ebitda,
+                    net_profit
+                ))
+                
+                quarters_inserted += 1
+                total_quarters += 1
+                
+            except Exception as e:
+                print(f"  ⚠️ Error inserting quarter: {str(e)}")
+                continue
+        
+        if quarters_inserted > 0:
+            print(f"✓ {stock['symbol']} - {quarters_inserted} quarters inserted")
+            successful += 1
+        else:
+            print(f"✗ No valid quarters for {stock['symbol']}")
+            failed += 1        
+        print(f"  📊 API requests used: {ALPHA_REQUESTS_MADE}/{MAX_ALPHA_REQUESTS}")
+        time.sleep(12) 
     db.commit()
     cur.close()
     db.close()
     
-    print(f"\n{'='*50}")
-    print(f"Quarterly financials ingestion completed!")
-    print(f"✓ Successful stocks: {successful_updates}")
-    print(f"✗ Failed stocks: {failed_updates}")
-    print(f"Total quarters processed: {total_quarters_processed}")
-    print(f"Total stocks processed: {len(stocks)}")
-    print(f"{'='*50}")
+    print(f"\n{'='*60}")
+    print(f"✅ Quarterly financials ingestion completed!")
+    print(f"✓ Successful stocks: {successful}")
+    print(f"✗ Failed stocks: {failed}")
+    print(f"📊 Total quarters processed: {total_quarters}")
+    print(f"📈 Average quarters per stock: {total_quarters/successful:.1f}" if successful > 0 else "")
+    print(f"🌐 Alpha Vantage requests used: {ALPHA_REQUESTS_MADE}/{MAX_ALPHA_REQUESTS}")
+    print(f"{'='*60}")
 
 if __name__ == "__main__":
     ingest_quarterly()
