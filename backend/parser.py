@@ -1,49 +1,84 @@
 import re
 
+# -------------------------
+# FIELD & OPERATOR MAP
+# -------------------------
+FIELD_MAP = {
+    "pe": "pe_ratio",
+    "price": "close_price",
+    "profit": "profit",
+    "market cap": "market_cap",
+    "sector": "sector"
+}
+
+OPERATOR_MAP = {
+    "below": "<",
+    "less than": "<",
+    "above": ">",
+    "greater than": ">",
+    "equals": "="
+}
+
+
+def parse_single_condition(text):
+    text = text.strip().lower()
+
+    field = None
+    for key in FIELD_MAP:
+        if key in text:
+            field = FIELD_MAP[key]
+            break
+
+    if not field:
+        raise ValueError("Unsupported field")
+
+    operator = None
+    for key in OPERATOR_MAP:
+        if key in text:
+            operator = OPERATOR_MAP[key]
+            break
+
+    if not operator:
+        raise ValueError("Unsupported operator")
+
+    value_match = re.search(r"\d+", text)
+    if value_match:
+        value = int(value_match.group())
+    else:
+        # string value (e.g. sector IT)
+        parts = text.split()
+        value = parts[-1].upper()
+
+    return {
+        "node": "condition",
+        "field": field,
+        "operator": operator,
+        "value": value
+    }
+
+
 def parse_query_to_dsl(query: str):
     q = query.lower()
 
-    # -------- QUARTERLY QUERY --------
-    if "quarter" in q:
-        num_match = re.search(r"(\d+)", q)
-        n = int(num_match.group()) if num_match else 4
-
-        if "profit" in q:
-            return {
-                "type": "quarterly",
-                "metric": "net_profit",
-                "operator": ">",
-                "value": 0,
-                "n": n
-            }
-
-        raise ValueError("Unsupported quarterly query")
-
-    # -------- SNAPSHOT QUERY --------
-    if "pe" in q:
-        value = re.search(r"\d+", q)
-        if not value:
-            raise ValueError("PE value missing")
-
+    # OR has lowest precedence
+    if " or " in q:
+        left, right = q.split(" or ", 1)
         return {
-            "type": "snapshot",
-            "conditions": [
-                {"field": "pe_ratio", "operator": "<", "value": value.group()}
-            ],
-            "logic": "AND"
+            "node": "logical",
+            "op": "OR",
+            "left": parse_query_to_dsl(left),
+            "right": parse_query_to_dsl(right)
         }
 
-    if "price" in q:
-        value = re.search(r"\d+", q)
-        if not value:
-            raise ValueError("Price value missing")
-
+    # AND
+    if " and " in q:
+        left, right = q.split(" and ", 1)
         return {
-            "type": "snapshot",
-            "conditions": [
-                {"field": "close_price", "operator": ">", "value": value.group()}
-            ],
-            "logic": "AND"
+            "node": "logical",
+            "op": "AND",
+            "left": parse_query_to_dsl(left),
+            "right": parse_query_to_dsl(right)
         }
 
-    raise ValueError("Query not supported")
+    # Base condition
+    return parse_single_condition(q)

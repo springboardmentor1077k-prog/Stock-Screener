@@ -1,22 +1,21 @@
-from quarterly_compiler import build_last_n_quarters_subquery
+def compile_node(node):
+    # Condition node
+    if node["node"] == "condition":
+        value = node["value"]
+        if isinstance(value, str):
+            value = f"'{value}'"
+
+        return f"{node['field']} {node['operator']} {value}"
+
+    # Logical node
+    if node["node"] == "logical":
+        left_sql = compile_node(node["left"])
+        right_sql = compile_node(node["right"])
+        return f"({left_sql} {node['op']} {right_sql})"
+
+    raise ValueError("Invalid DSL node")
+
 
 def build_where_clause(dsl):
-    # -------- SNAPSHOT --------
-    if dsl["type"] == "snapshot":
-        parts = []
-        for cond in dsl["conditions"]:
-            parts.append(
-                f"{cond['field']} {cond['operator']} {cond['value']}"
-            )
-        return " AND " + " AND ".join(parts)
+    return " AND " + compile_node(dsl)
 
-    # -------- QUARTERLY --------
-    if dsl["type"] == "quarterly":
-        return " AND " + build_last_n_quarters_subquery(
-            metric=dsl["metric"],
-            operator=dsl["operator"],
-            value=dsl["value"],
-            n=dsl["n"]
-        )
-
-    return ""

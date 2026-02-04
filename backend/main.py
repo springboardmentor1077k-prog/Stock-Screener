@@ -8,11 +8,20 @@ from validator import validate_dsl
 from screener import build_where_clause
 from database import get_screening_data
 
+# -------------------------
+# APP INIT (THIS WAS MISSING / MOVED)
+# -------------------------
 app = FastAPI()
 
+# -------------------------
+# AUTH STORAGE (IN-MEMORY)
+# -------------------------
 users_db = {}
 token_store = {}
 
+# -------------------------
+# REQUEST MODELS
+# -------------------------
 class RegisterRequest(BaseModel):
     username: str
     password: str
@@ -24,6 +33,9 @@ class LoginRequest(BaseModel):
 class ScreenRequest(BaseModel):
     query: str
 
+# -------------------------
+# ROUTES
+# -------------------------
 @app.post("/register")
 def register(data: RegisterRequest):
     users_db[data.username] = data.password
@@ -51,7 +63,6 @@ def screen(data: ScreenRequest, token: str = Header(None)):
         results = get_screening_data(where_clause)
 
         return {
-            "type": dsl["type"],
             "count": len(results),
             "data": results
         }
