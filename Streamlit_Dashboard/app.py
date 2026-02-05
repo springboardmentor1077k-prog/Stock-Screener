@@ -1,10 +1,9 @@
 import streamlit as st
-import requests
 import pandas as pd
 import time
+from utils.api import fetch_data, post_data
 
 # --- Configuration ---
-BACKEND_URL = "http://localhost:5000/screen"
 PAGE_TITLE = "Stock Screener Dashboard"
 PAGE_ICON = "📈"
 
@@ -20,43 +19,21 @@ st.set_page_config(
 if "screener_results" not in st.session_state:
     st.session_state.screener_results = None
 
-if "alerts" not in st.session_state:
-    # Initialize with some dummy alerts
-    st.session_state.alerts = [
-        {"Symbol": "AAPL", "Condition": "Above", "Value": 180.0, "Status": "Active"},
-        {"Symbol": "TSLA", "Condition": "Below", "Value": 200.0, "Status": "Active"}
-    ]
-
-if "portfolio" not in st.session_state:
-    # Initialize with sample portfolio data
-    st.session_state.portfolio = pd.DataFrame([
-        {"Symbol": "MSFT", "Shares": 10, "Avg Price": 305.50, "Current Price": 402.10, "Return": "+31.6%"},
-        {"Symbol": "GOOGL", "Shares": 5, "Avg Price": 120.00, "Current Price": 145.30, "Return": "+21.1%"},
-        {"Symbol": "NVDA", "Shares": 20, "Avg Price": 450.00, "Current Price": 720.50, "Return": "+60.1%"}
-    ])
-
 # --- Helper Functions ---
-def run_screener(query, sector, strong_only, market_cap):
+def handle_api_response(response, success_callback, error_callback=None):
     """
-    Calls the backend API to screen stocks based on criteria.
+    Centralized handler for API responses.
     """
-    payload = {
-        "query": query,
-        "sector": sector,
-        "strong_only": strong_only,
-        "market_cap": market_cap
-    }
-    
-    try:
-        response = requests.post(BACKEND_URL, json=payload, timeout=10)
-        response.raise_for_status() # Raise error for bad status codes
-        return response.json()
-    except requests.exceptions.ConnectionError:
-        return {"status": "error", "message": "Server not reachable. Please check if the backend is running."}
-    except requests.exceptions.RequestException as e:
-        return {"status": "error", "message": f"Error fetching data: {str(e)}"}
-    except Exception as e:
-        return {"status": "error", "message": f"Unexpected error: {str(e)}"}
+    if response.get("status") == "success":
+        return success_callback(response.get("data"))
+    elif "error_code" in response:
+        error_msg = response.get("message", "Unknown error")
+        st.error(f"Error ({response.get('error_code')}): {error_msg}")
+        if error_callback: error_callback(response)
+        return None
+    else:
+        st.error("Invalid response format from server")
+        return None
 
 # --- Page Renderers ---
 
@@ -105,24 +82,22 @@ def render_screener_page():
     # --- Step 2 & 3: Action & Loading ---
     if run_btn:
         with st.spinner("Running screener... Analyzing market data..."):
-            # Simulate a small delay for better UX if backend is instant, or actual wait
-            # time.sleep(0.5) 
-            
-            result = run_screener(query, sector, strong_only, market_cap)
-            
-            # Store result in session state
-            st.session_state.screener_results = result
+            payload = {
+                "query": query,
+                "sector": sector,
+                "strong_only": strong_only,
+                "market_cap": market_cap
+            }
+            response = post_data("screen", payload)
+            st.session_state.screener_results = response
 
     # --- Step 4: Handle Responses ---
     if st.session_state.screener_results:
-        result = st.session_state.screener_results
+        response = st.session_state.screener_results
         
-        if result.get("status") == "success":
-            data = result.get("data", [])
-            
+        def show_results(data):
             if data:
                 st.success(f"Found {len(data)} matching stocks")
-                # Create a clean dataframe for display
                 df = pd.DataFrame(data)
                 st.dataframe(
                     df, 
@@ -131,44 +106,63 @@ def render_screener_page():
                     column_config={
                         "price": st.column_config.NumberColumn("Price", format="$%.2f"),
                         "market_cap": st.column_config.NumberColumn("Market Cap", format="$%.2f B"),
-                        "change": st.column_config.NumberColumn("Change", format="%.2f%%")
+                        "pe_ratio": st.column_config.NumberColumn("PE Ratio", format="%.2f"),
+                        "sector": "Sector",
+                        "company_name": "Company"
                     }
                 )
             else:
                 st.info("No matching stocks found. Try adjusting your filters.")
                 
-        elif result.get("status") == "error":
-            st.error(result.get("message", "Unknown error occurred"))
-        else:
-            st.warning("Received unexpected response format from server.")
+        handle_api_response(response, show_results)
 
 def render_portfolio_page():
     st.header("💼 My Portfolio")
     st.caption("Track your current holdings and performance.")
     
-    with st.container():
-        col1, col2 = st.columns([3, 1])
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        refresh = st.button("🔄 Refresh Data")
+    
+    # Fetch Data
+    with st.spinner("Loading portfolio..."):
+        response = fetch_data("portfolio")
+        
+    def show_portfolio(data):
+        if not data:
+            st.info("Your portfolio is empty.")
+            return
+
+        df = pd.DataFrame(data)
+        
+        # Calculate totals
+        total_value = (df['current_price'] * df['quantity']).sum()
+        total_profit = df['profit_loss'].sum()
+        
         with col1:
-             st.metric(label="Total Portfolio Value", value="$14,520.50", delta="+12.5%")
-        with col2:
-            st.button("🔄 Refresh Data")
+             st.metric(
+                 label="Total Portfolio Value", 
+                 value=f"${total_value:,.2f}", 
+                 delta=f"${total_profit:,.2f}"
+             )
+        
+        st.divider()
+        st.subheader("Holdings")
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "symbol": "Symbol",
+                "quantity": "Shares",
+                "avg_buy_price": st.column_config.NumberColumn("Avg Price", format="$%.2f"),
+                "current_price": st.column_config.NumberColumn("Current Price", format="$%.2f"),
+                "profit_loss": st.column_config.NumberColumn("Profit/Loss", format="$%.2f"),
+                "company_name": "Company"
+            }
+        )
 
-    st.divider()
-    
-    st.subheader("Holdings")
-    
-    # Editable dataframe for simple add/remove simulation or just display
-    edited_df = st.data_editor(
-        st.session_state.portfolio,
-        num_rows="dynamic",
-        use_container_width=True,
-        hide_index=True
-    )
-    
-    # Update session state if changed (though data_editor handles basic edits, syncing is good practice)
-    st.session_state.portfolio = edited_df
-
-    st.caption("You can edit the table directly to simulate adding/removing positions.")
+    handle_api_response(response, show_portfolio)
 
 def render_alerts_page():
     st.header("🔔 Price Alerts")
@@ -190,25 +184,48 @@ def render_alerts_page():
         
         if submitted:
             if symbol and value > 0:
-                new_alert = {
-                    "Symbol": symbol, 
-                    "Condition": condition, 
-                    "Value": value, 
-                    "Status": "Active"
-                }
-                st.session_state.alerts.append(new_alert)
-                st.success(f"Alert set for {symbol} {condition} ${value}")
+                with st.spinner("Creating alert..."):
+                    payload = {
+                        "symbol": symbol, 
+                        "condition": condition, 
+                        "value": value
+                    }
+                    response = post_data("alerts", payload)
+                    
+                    def on_success(data):
+                        st.success(f"Alert set for {symbol} {condition} ${value}")
+                        # Trigger rerun to update list
+                        time.sleep(1)
+                        st.rerun()
+                    
+                    handle_api_response(response, lambda d: on_success(d))
             else:
                 st.warning("Please enter a valid symbol and price.")
 
     st.divider()
     
     st.subheader("Active Alerts")
-    if st.session_state.alerts:
-        alerts_df = pd.DataFrame(st.session_state.alerts)
-        st.dataframe(alerts_df, use_container_width=True, hide_index=True)
-    else:
-        st.info("No active alerts.")
+    with st.spinner("Loading alerts..."):
+        response = fetch_data("alerts")
+        
+    def show_alerts(data):
+        if data:
+            df = pd.DataFrame(data)
+            st.dataframe(
+                df, 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={
+                    "metric": "Condition Metric",
+                    "operator": "Operator",
+                    "threshold": "Threshold",
+                    "is_active": "Active?"
+                }
+            )
+        else:
+            st.info("No active alerts.")
+
+    handle_api_response(response, show_alerts)
 
 # --- Main App Layout ---
 
@@ -229,10 +246,8 @@ def main():
         )
 
     # Main Page Content
-    st.title("Stock Screener Dashboard")
-    st.caption("Smart stock analysis and alerts")
-    st.divider()
-
+    # st.title("Stock Screener Dashboard") # Already in renderers or sidebar title
+    
     if page == "Screener":
         render_screener_page()
     elif page == "Portfolio":

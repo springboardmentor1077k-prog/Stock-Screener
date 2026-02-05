@@ -111,7 +111,79 @@ def screen_stocks():
         results = [dict(r) for r in rows]
         return jsonify({"status": "success", "data": results})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"error_code": "server_error", "message": str(e)}), 500
+
+@app.route('/portfolio', methods=['GET'])
+def get_portfolio():
+    try:
+        portfolio_id = 1  # Demo user
+        conn = get_db_connection()
+        
+        # Ensure portfolio exists
+        p_check = conn.execute("SELECT id FROM portfolios WHERE id = ?", (portfolio_id,)).fetchone()
+        if not p_check:
+            conn.execute("INSERT INTO portfolios (id, user_id, name) VALUES (?, ?, ?)", (portfolio_id, 1, "My Portfolio"))
+            conn.commit()
+
+        sql = """
+        SELECT 
+            h.stock_id as symbol,
+            h.quantity,
+            h.avg_buy_price,
+            s.price as current_price,
+            s.company_name,
+            (s.price - h.avg_buy_price) * h.quantity as profit_loss
+        FROM portfolio_holdings h
+        JOIN stocks s ON h.stock_id = s.symbol
+        WHERE h.portfolio_id = ?
+        """
+        rows = conn.execute(sql, (portfolio_id,)).fetchall()
+        conn.close()
+        return jsonify({"status": "success", "data": [dict(r) for r in rows]})
+    except Exception as e:
+        return jsonify({"error_code": "server_error", "message": str(e)}), 500
+
+@app.route('/alerts', methods=['GET', 'POST'])
+def handle_alerts():
+    conn = get_db_connection()
+    portfolio_id = 1
+    
+    if request.method == 'GET':
+        try:
+            # We are storing "SYMBOL price" in metric for now to link to stock
+            rows = conn.execute("SELECT * FROM alerts WHERE portfolio_id = ?", (portfolio_id,)).fetchall()
+            conn.close()
+            return jsonify({"status": "success", "data": [dict(r) for r in rows]})
+        except Exception as e:
+            conn.close()
+            return jsonify({"error_code": "server_error", "message": str(e)}), 500
+
+    elif request.method == 'POST':
+        try:
+            data = request.get_json()
+            symbol = data.get('symbol')
+            condition = data.get('condition') # "Above price" or "Below price"
+            value = float(data.get('value'))
+            
+            # Map condition to operator
+            operator = ">" if "Above" in condition else "<"
+            metric = f"{symbol} price"
+            
+            conn.execute(
+                "INSERT INTO alerts (user_id, portfolio_id, metric, operator, threshold) VALUES (?, ?, ?, ?, ?)",
+                (1, portfolio_id, metric, operator, value)
+            )
+            conn.commit()
+            conn.close()
+            return jsonify({"status": "success", "message": "Alert created"})
+        except Exception as e:
+            conn.close()
+            return jsonify({"error_code": "creation_error", "message": str(e)}), 500
+
+@app.route('/alerts/checks', methods=['POST'])
+def check_alerts():
+    # Placeholder for checking alerts logic
+    return jsonify({"status": "success", "message": "Alerts checked"})
 
 if __name__ == '__main__':
     print(f"Starting server... DB Path: {db_path}")
