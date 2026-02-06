@@ -6,7 +6,7 @@ import pandas as pd
 API_URL = os.getenv("API_URL", "http://127.0.0.1:8001")
 
 st.set_page_config(page_title="AI Stock Screener", layout="wide")
-
+st.caption("⚠️ Disclaimer: This tool is for educational and informational purposes only. It does not provide financial advice or investment recommendations.")
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
 if 'token' not in st.session_state:
@@ -209,7 +209,7 @@ else:
     
     st.divider()
 
-    tab1, tab2 = st.tabs(["📊 Stock Screener", "💼 My Portfolios"])
+    tab1, tab2, tab3 = st.tabs(["📊 Stock Screener", "💼 My Portfolios", "🔔 Price Alerts"])
     
     with tab1:
         query = st.text_input(
@@ -502,3 +502,291 @@ else:
                         st.info("No holdings in this portfolio")
         else:
             st.info("No portfolios found. Create your first portfolio above!")
+
+    
+    with tab3:
+        st.subheader("🔔 Price Alert Management")
+        
+        def get_alerts():
+            """Get user's alerts."""
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                response = requests.get(f"{API_URL}/alerts/", headers=headers)
+                if response.status_code == 200:
+                    return True, response.json()
+                else:
+                    return False, "Failed to fetch alerts"
+            except Exception as e:
+                return False, f"Error: {str(e)}"
+        
+        def get_alert_events():
+            """Get alert events."""
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                response = requests.get(f"{API_URL}/alerts/events", headers=headers)
+                if response.status_code == 200:
+                    return True, response.json()
+                else:
+                    return False, "Failed to fetch alert events"
+            except Exception as e:
+                return False, f"Error: {str(e)}"
+        
+        def get_alert_summary():
+            """Get alert summary."""
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                response = requests.get(f"{API_URL}/alerts/summary", headers=headers)
+                if response.status_code == 200:
+                    return True, response.json()
+                else:
+                    return False, "Failed to fetch summary"
+            except Exception as e:
+                return False, f"Error: {str(e)}"
+        
+        def create_alert(stock_id, portfolio_id, metric, operator, threshold):
+            """Create a new alert."""
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                response = requests.post(f"{API_URL}/alerts/", 
+                                       json={"stock_id": stock_id, "portfolio_id": portfolio_id, "metric": metric, "operator": operator, "threshold": threshold}, 
+                                       headers=headers)
+                if response.status_code == 200:
+                    return True, "Alert created successfully"
+                else:
+                    error_data = response.json()
+                    return False, error_data.get('detail', 'Failed to create alert')
+            except Exception as e:
+                return False, f"Error: {str(e)}"
+        
+        def delete_alert(alert_id):
+            """Delete an alert."""
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                response = requests.delete(f"{API_URL}/alerts/{alert_id}", headers=headers)
+                if response.status_code == 200:
+                    return True, "Alert deleted successfully"
+                else:
+                    return False, "Failed to delete alert"
+            except Exception as e:
+                return False, f"Error: {str(e)}"
+        
+        def toggle_alert(alert_id):
+            """Toggle alert active status."""
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                response = requests.patch(f"{API_URL}/alerts/{alert_id}/toggle", headers=headers)
+                if response.status_code == 200:
+                    return True, response.json()
+                else:
+                    return False, "Failed to toggle alert"
+            except Exception as e:
+                return False, f"Error: {str(e)}"
+        
+        def get_all_stocks():
+            """Get all stocks for dropdown."""
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                response = requests.get(f"{API_URL}/alerts/stocks/list", headers=headers)
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    return []
+            except:
+                return []
+        
+        success, summary = get_alert_summary()
+        if success:
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Alerts", summary.get('total_alerts', 0))
+            with col2:
+                st.metric("Active Alerts", summary.get('active_alerts', 0))
+            with col3:
+                st.metric("Total Triggers", summary.get('total_triggers', 0))
+            with col4:
+                st.metric("Stocks Monitored", summary.get('stocks_monitored', 0))
+        
+        st.divider()
+        
+        with st.expander("➕ Create New Alert"):
+            st.write("Set up alerts to monitor your portfolio stocks")
+            
+            with st.form("create_alert"):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    stock_symbol = st.text_input("Stock Symbol (e.g., AAPL, TSLA)", key="alert_stock")
+                    metric = st.selectbox("Metric", [
+                        "price",
+                        "pe_ratio",
+                        "market_cap",
+                        "eps",
+                        "roe",
+                        "dividend_yield"
+                    ], format_func=lambda x: x.replace('_', ' ').title())
+                    
+                with col2:
+                    operator = st.selectbox("Operator", [">", "<", ">=", "<=", "="])
+                    threshold = st.number_input("Threshold Value", min_value=0.0, step=0.01, format="%.2f")
+                
+                portfolios_success, portfolios = get_portfolios()
+                if portfolios_success and portfolios:
+                    portfolio_options = {p['name']: p['portfolio_id'] for p in portfolios}
+                    selected_portfolio_name = st.selectbox("Portfolio", list(portfolio_options.keys()))
+                    selected_portfolio_id = portfolio_options[selected_portfolio_name]
+                else:
+                    st.warning("You need to create a portfolio first")
+                    selected_portfolio_id = None
+                
+                if st.form_submit_button("Create Alert"):
+                    if stock_symbol.strip() and threshold > 0 and selected_portfolio_id:
+                        try:
+                            headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                            response = requests.get(f"{API_URL}/alerts/stocks/search", 
+                                                   params={"symbol": stock_symbol.upper().strip()},
+                                                   headers=headers)
+                            if response.status_code == 200:
+                                stock = response.json()
+                                success, message = create_alert(stock['stock_id'], selected_portfolio_id, metric, operator, threshold)
+                                if success:
+                                    st.success(message)
+                                    st.rerun()
+                                else:
+                                    st.error(message)
+                            else:
+                                st.error(f"Stock symbol '{stock_symbol.upper()}' not found")
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+                    else:
+                        st.error("Please fill in all fields and select a portfolio")
+        
+        success, alerts = get_alerts()
+        if success and alerts:
+            st.subheader("Your Active Alerts")
+            
+            alerts_df = pd.DataFrame(alerts)            
+            if 'selected' not in st.session_state:
+                st.session_state.selected = []
+            
+            selection_data = []
+            for idx, alert in enumerate(alerts):
+                alert_key = f"{alert['alert_id']}"
+                is_selected = alert_key in st.session_state.selected
+                selection_data.append({
+                    'Select': is_selected,
+                    'alert_id': alert['alert_id'],
+                    'Symbol': alert['symbol'],
+                    'Company': alert['company_name'],
+                    'Metric': alert['metric'].replace('_', ' ').title(),
+                    'Op': alert['operator'],
+                    'Threshold': f"{alert['threshold']:,.2f}",
+                    'Active': '✅' if alert['is_active'] else '❌',
+                    'Triggered': alert['times_triggered'],
+                    'Last Triggered': pd.to_datetime(alert['last_triggered']).strftime('%Y-%m-%d %H:%M') if pd.notnull(alert['last_triggered']) else "Never"
+                })
+            
+            edited_df = st.data_editor(
+                pd.DataFrame(selection_data),
+                column_config={
+                    "Select": st.column_config.CheckboxColumn(
+                        "Select",
+                        help="Select alerts to manage",
+                        default=False,
+                    ),
+                    "alert_id": None,  
+                },
+                disabled=["Symbol", "Company", "Metric", "Op", "Threshold", "Active", "Triggered", "Last Triggered"],
+                hide_index=True,
+                use_container_width=True
+            )
+            
+            st.session_state.selected = [
+                str(row['alert_id']) for _, row in edited_df.iterrows() if row['Select']
+            ]
+            
+            if st.session_state.selected:
+                st.subheader(f"Manage Selected Alerts ({len(st.session_state.selected)} selected)")
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    if st.button("🗑️ Delete Selected", use_container_width=True):
+                        deleted_count = 0
+                        for alert_id in st.session_state.selected:
+                            success, message = delete_alert(int(alert_id))
+                            if success:
+                                deleted_count += 1
+                        st.session_state.selected = []
+                        st.success(f"Deleted {deleted_count} alert(s)")
+                        st.rerun()
+                
+                with col2:
+                    if st.button("🔔 Activate Selected", use_container_width=True):
+                        activated_count = 0
+                        for alert_id in st.session_state.selected:
+                            alert = next((a for a in alerts if a['alert_id'] == int(alert_id)), None)
+                            if alert and not alert['is_active']:
+                                success, result = toggle_alert(int(alert_id))
+                                if success:
+                                    activated_count += 1
+                        st.session_state.selected = []
+                        st.success(f"Activated {activated_count} alert(s)")
+                        st.rerun()
+                
+                with col3:
+                    if st.button("🔕 Deactivate Selected", use_container_width=True):
+                        deactivated_count = 0
+                        for alert_id in st.session_state.selected:
+                            alert = next((a for a in alerts if a['alert_id'] == int(alert_id)), None)
+                            if alert and alert['is_active']:
+                                success, result = toggle_alert(int(alert_id))
+                                if success:
+                                    deactivated_count += 1
+                        st.session_state.selected = []
+                        st.success(f"Deactivated {deactivated_count} alert(s)")
+                        st.rerun()
+        else:
+            st.info("No alerts found. Create your first alert above!")
+        
+        st.divider()
+        
+        st.subheader("📊 Recent Alert Triggers")
+        success, events = get_alert_events()
+        if success and events:
+            events_df = pd.DataFrame(events)
+            
+            display_columns = ['symbol', 'company_name', 'metric', 'operator', 'threshold', 'triggered_value', 'triggered_at']
+            available_event_columns = [col for col in display_columns if col in events_df.columns]
+            
+            if available_event_columns:
+                events_display = events_df[available_event_columns].copy()
+                
+                column_mapping = {
+                    'symbol': 'Symbol',
+                    'company_name': 'Company',
+                    'metric': 'Metric',
+                    'operator': 'Op',
+                    'threshold': 'Threshold',
+                    'triggered_value': 'Actual Value',
+                    'triggered_at': 'Triggered At'
+                }
+                
+                events_display = events_display.rename(columns={k: v for k, v in column_mapping.items() if k in events_display.columns})
+                
+                if 'Metric' in events_display.columns:
+                    events_display['Metric'] = events_display['Metric'].apply(lambda x: x.replace('_', ' ').title() if pd.notnull(x) else "N/A")
+                
+                if 'Threshold' in events_display.columns:
+                    events_display['Threshold'] = events_display['Threshold'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A")
+                if 'Actual Value' in events_display.columns:
+                    events_display['Actual Value'] = events_display['Actual Value'].apply(lambda x: f"{x:,.2f}" if pd.notnull(x) else "N/A")
+                
+                if 'Triggered At' in events_display.columns:
+                    events_display['Triggered At'] = events_display['Triggered At'].apply(
+                        lambda x: pd.to_datetime(x).strftime('%Y-%m-%d %H:%M') if pd.notnull(x) else "N/A"
+                    )
+                
+                st.dataframe(events_display, use_container_width=True)
+            else:
+                st.info("No event data available")
+        else:
+            st.info("No alert triggers yet")

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.auth import router as auth_router
 from backend.ai.routes import router as ai_router
 from backend.portfolio import router as portfolio_router
+from backend.alerts import router as alerts_router
 
 app = FastAPI(title="AI Stock Screener")
 
@@ -17,3 +18,4 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(ai_router)
 app.include_router(portfolio_router)
+app.include_router(alerts_router)

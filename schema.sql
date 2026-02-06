@@ -99,6 +99,24 @@ CREATE TABLE alerts (
         ON DELETE CASCADE
 );
 
+CREATE TABLE alert_event (
+    event_id INT AUTO_INCREMENT PRIMARY KEY,
+    alert_id INT NOT NULL,
+    stock_id INT NOT NULL,
+    triggered_value DECIMAL(10,2) NOT NULL,
+    triggered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_event_alert
+        FOREIGN KEY (alert_id)
+        REFERENCES alerts(alert_id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_event_stock
+        FOREIGN KEY (stock_id)
+        REFERENCES stocks(stock_id)
+        ON DELETE CASCADE
+);
+
 CREATE TABLE analyst_targets (
     target_id INT AUTO_INCREMENT PRIMARY KEY,
     stock_id INT NOT NULL,

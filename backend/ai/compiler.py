@@ -2,43 +2,22 @@ from backend.database import get_db
 import mysql.connector
 
 def compile_and_run(dsl):
-    """Compile and execute DSL with optimized queries using performance indexes."""
+    """Compile and execute DSL with simplified query."""
     db = None
     cursor = None
     
     try:
         db = get_db()
-        cursor = db.cursor(dictionary=True)        
+        cursor = db.cursor(dictionary=True)
         base_sql = """
         SELECT DISTINCT
             s.stock_id,
             s.symbol,
             s.company_name,
-            s.sector,
-            s.industry,
-            s.exchange,
-            s.country,
-            s.market_cap_category,
-            s.is_adr,
             f.pe_ratio,
-            f.eps,
             f.market_cap,
-            f.roe,
-            f.debt_equity,
-            f.price_to_book,
-            f.dividend_yield,
-            f.profit_margin,
-            f.beta,
             f.current_price,
-            MAX(at.target_price) as target_price,
             MAX(at.recommendation) as recommendation,
-            MAX(at.analyst_firm) as analyst_firm,
-            MAX(at.updated_at) as analyst_updated,
-            CASE 
-                WHEN MAX(at.target_price) IS NOT NULL AND f.current_price IS NOT NULL AND f.current_price > 0 THEN
-                    ROUND(((MAX(at.target_price) - f.current_price) / f.current_price * 100), 2)
-                ELSE NULL
-            END as upside_percentage,
             CASE 
                 WHEN MAX(at.target_price) IS NOT NULL AND f.current_price IS NOT NULL AND f.current_price > 0 THEN
                     CASE 
@@ -56,11 +35,9 @@ def compile_and_run(dsl):
         
         where_clause, params = build_where_clause(dsl)
         if where_clause:
-            base_sql += f" WHERE {where_clause}"        
-        base_sql += """ GROUP BY s.stock_id, s.symbol, s.company_name, s.sector, s.industry, s.exchange, 
-                        s.country, s.market_cap_category, s.is_adr, f.pe_ratio, f.eps, f.market_cap, 
-                        f.roe, f.debt_equity, f.price_to_book, f.dividend_yield, f.profit_margin, 
-                        f.beta, f.current_price 
+            base_sql += f" WHERE {where_clause}"
+        
+        base_sql += """ GROUP BY s.stock_id, s.symbol, s.company_name, f.pe_ratio, f.market_cap, f.current_price
                         ORDER BY s.symbol LIMIT 500"""
         
         cursor.execute(base_sql, params)
