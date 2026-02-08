@@ -1,7 +1,6 @@
 
 fastapi
 uvicorn
-sqlalchemy
 psycopg2-binary
 pydantic
 pydantic-settings
@@ -10,3 +9,4 @@ passlib[bcrypt]
 python-multipart
 streamlit
 requests
+google-generativeai
