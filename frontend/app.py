@@ -2,176 +2,171 @@ import streamlit as st
 import requests
 import pandas as pd
 
-API_URL = "http://127.0.0.1:8000"
+API = "http://127.0.0.1:8000"
 
-st.set_page_config(
-    page_title="AI Stock Explorer",
-    layout="centered"
-)
+st.set_page_config(page_title="AI Stock Explorer", layout="centered")
+st.title("AI Stock Explorer")
 
 # -------------------------
-# Session State Init
+# SESSION STATE
 # -------------------------
 if "token" not in st.session_state:
     st.session_state.token = None
 
-if "page" not in st.session_state:
-    st.session_state.page = "login"
-
-
 # -------------------------
-# Custom Styling
+# AUTH SECTION
 # -------------------------
-st.markdown("""
-<style>
-.main-title {
-    font-size: 40px;
-    font-weight: 700;
-    color: #1f3c88;
-    text-align: center;
-}
-.tagline {
-    font-size: 16px;
-    color: #555;
-    text-align: center;
-    margin-bottom: 30px;
-}
-.section-title {
-    font-size: 24px;
-    font-weight: 600;
-    color: #1f3c88;
-}
-</style>
-""", unsafe_allow_html=True)
+if st.session_state.token is None:
+    st.subheader("Login / Register")
 
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
 
-# -------------------------
-# LOGIN PAGE
-# -------------------------
-def login_page():
-    st.markdown('<div class="main-title">AI Stock Explorer</div>', unsafe_allow_html=True)
-    st.markdown('<div class="tagline">Search stocks using simple English queries</div>', unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
 
-    tab1, tab2 = st.tabs(["🔐 Login", "📝 Register"])
-
-    # -------- LOGIN --------
-    with tab1:
-        st.markdown('<div class="section-title">Login</div>', unsafe_allow_html=True)
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-
-        if st.button("Login"):
-            payload = {"username": username, "password": password}
-
+    with col1:
+        if st.button("Register"):
             try:
-                res = requests.post(f"{API_URL}/login", json=payload, timeout=5)
+                res = requests.post(
+                    f"{API}/register",
+                    json={"username": username, "password": password},
+                    timeout=5
+                )
+                if res.status_code == 200:
+                    st.success("Registered successfully. Please login.")
+                else:
+                    st.error("Registration failed.")
+            except requests.exceptions.RequestException:
+                st.error("Backend not reachable.")
 
+    with col2:
+        if st.button("Login"):
+            try:
+                res = requests.post(
+                    f"{API}/login",
+                    json={"username": username, "password": password},
+                    timeout=5
+                )
                 if res.status_code == 200:
                     st.session_state.token = res.json()["token"]
-                    st.session_state.page = "screener"
-                    st.success("✅ Login successful")
-                    st.rerun()
+                    st.success("Login successful.")
                 else:
-                    st.error(res.json().get("detail", "Login failed"))
-
-            except requests.exceptions.ConnectionError:
-                st.error("❌ Backend server is not running.")
-            except requests.exceptions.Timeout:
-                st.error("❌ Backend request timed out.")
-            except Exception as e:
-                st.error(f"❌ Unexpected error: {e}")
-
-    # -------- REGISTER --------
-    with tab2:
-        st.markdown('<div class="section-title">Register</div>', unsafe_allow_html=True)
-        new_user = st.text_input("New Username")
-        new_pass = st.text_input("New Password", type="password")
-
-        if st.button("Register"):
-            payload = {"username": new_user, "password": new_pass}
-
-            try:
-                res = requests.post(f"{API_URL}/register", json=payload, timeout=5)
-
-                if res.status_code == 200:
-                    st.success("🎉 Registration successful. Please login.")
-                else:
-                    st.error(res.json().get("detail", "Registration failed"))
-
-            except requests.exceptions.ConnectionError:
-                st.error("❌ Backend server is not running.")
-            except requests.exceptions.Timeout:
-                st.error("❌ Backend request timed out.")
-            except Exception as e:
-                st.error(f"❌ Unexpected error: {e}")
-
+                    st.error("Invalid credentials.")
+            except requests.exceptions.RequestException:
+                st.error("Backend not reachable.")
 
 # -------------------------
-# SCREENER PAGE
+# MAIN APP (AFTER LOGIN)
 # -------------------------
-def screener_page():
-    st.markdown('<div class="main-title">AI Stock Explorer</div>', unsafe_allow_html=True)
-    st.markdown('<div class="tagline">Search stocks using simple English queries</div>', unsafe_allow_html=True)
+else:
+    headers = {"token": st.session_state.token}
 
-    col1, col2 = st.columns([5, 1])
-    with col2:
-        if st.button("Logout"):
-            st.session_state.token = None
-            st.session_state.page = "login"
-            st.rerun()
+    if st.button("Logout"):
+        st.session_state.token = None
+        st.info("Logged out.")
+        st.stop()
 
-    st.markdown('<div class="section-title">Stock Screener</div>', unsafe_allow_html=True)
+    # -------------------------
+    # STOCK SCREENER
+    # -------------------------
+    st.subheader("Stock Screener")
 
     query = st.text_input(
         "Enter your stock query",
-        placeholder="Example: show IT stocks below 20 pe"
+        placeholder="Example: pe below 20 and sector equals IT"
     )
 
     if st.button("Search"):
-        if not query:
-            st.warning("Please enter a query")
-            return
-
-        headers = {"token": st.session_state.token}
-        payload = {"query": query}
-
         try:
             res = requests.post(
-                f"{API_URL}/screen",
-                json=payload,
+                f"{API}/screen",
+                json={"query": query},
                 headers=headers,
                 timeout=10
             )
 
             if res.status_code == 200:
-                result = res.json()
-                count = result["count"]
-                data = result["data"]
-
-                st.success(f"✅ Total matching stocks: {count}")
-
-                if count > 0:
-                    df = pd.DataFrame(data)
-                    st.dataframe(df, use_container_width=True)
+                data = res.json().get("data", [])
+                if data:
+                    st.dataframe(pd.DataFrame(data), use_container_width=True)
                 else:
-                    st.info("No matching results found.")
-
+                    st.info("No matching stocks found.")
             else:
-                error_msg = res.json().get("detail", "Invalid query")
-                st.error(f"❌ {error_msg}")
+                st.error("Query failed. Check backend logs.")
 
-        except requests.exceptions.ConnectionError:
-            st.error("❌ Backend server is not running.")
-        except requests.exceptions.Timeout:
-            st.error("❌ Backend request timed out.")
-        except Exception as e:
-            st.error(f"❌ Unexpected error: {e}")
+        except requests.exceptions.RequestException:
+            st.error("Backend not reachable.")
 
+    # -------------------------
+    # PORTFOLIO
+    # -------------------------
+    st.subheader("Portfolio")
 
-# -------------------------
-# ROUTING
-# -------------------------
-if st.session_state.page == "login":
-    login_page()
-else:
-    screener_page()
+    if st.button("Create Portfolio"):
+        try:
+            res = requests.post(f"{API}/portfolio/create", headers=headers)
+            if res.status_code == 200:
+                st.success(f"Portfolio created. ID: {res.json()['portfolio_id']}")
+            else:
+                st.error("Failed to create portfolio.")
+        except requests.exceptions.RequestException:
+            st.error("Backend not reachable.")
+
+    portfolio_id = st.number_input("Portfolio ID", min_value=1, step=1)
+    stock_id = st.number_input("Stock ID (1–25)", min_value=1, max_value=25, step=1)
+    quantity = st.number_input("Quantity", min_value=1, step=1)
+    buy_price = st.number_input("Buy Price", min_value=0.0, step=0.01)
+
+    if st.button("Add to Portfolio"):
+        try:
+            res = requests.post(
+                f"{API}/portfolio/add",
+                json={
+                    "portfolio_id": portfolio_id,
+                    "stock_id": stock_id,
+                    "quantity": quantity,
+                    "buy_price": buy_price
+                },
+                headers=headers
+            )
+            if res.status_code == 200:
+                st.success("Stock added to portfolio.")
+            else:
+                st.error("Failed to add stock.")
+        except requests.exceptions.RequestException:
+            st.error("Backend not reachable.")
+
+    if st.button("View Portfolio"):
+        try:
+            res = requests.get(
+                f"{API}/portfolio/view/{portfolio_id}",
+                headers=headers
+            )
+            if res.status_code == 200:
+                holdings = res.json().get("holdings", [])
+                if holdings:
+                    st.dataframe(pd.DataFrame(holdings), use_container_width=True)
+                else:
+                    st.info("No holdings found.")
+            else:
+                st.error("Failed to fetch portfolio.")
+        except requests.exceptions.RequestException:
+            st.error("Backend not reachable.")
+
+    # -------------------------
+    # MARKET SIMULATION
+    # -------------------------
+    st.subheader("Market Simulation")
+
+    if st.button("Simulate Market Price Change"):
+        try:
+            res = requests.post(
+                f"{API}/market/simulate",
+                headers=headers
+            )
+            if res.status_code == 200:
+                st.success("Market prices updated. Refresh portfolio to see changes.")
+            else:
+                st.error("Market simulation failed.")
+        except requests.exceptions.RequestException:
+            st.error("Backend not reachable.")
