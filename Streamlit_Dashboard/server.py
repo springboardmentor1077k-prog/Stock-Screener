@@ -20,6 +20,12 @@ from ai_service import AIBackend
 
 app = Flask(__name__)
 ai_backend = AIBackend()
+sys.path.append(os.path.join(project_root, "alert_system"))
+try:
+    from alert_engine import AlertEngine
+    alert_engine = AlertEngine(db_path=db_path)
+except Exception:
+    alert_engine = None
 
 def ensure_schema(conn):
     try:
@@ -182,8 +188,40 @@ def handle_alerts():
 
 @app.route('/alerts/checks', methods=['POST'])
 def check_alerts():
-    # Placeholder for checking alerts logic
-    return jsonify({"status": "success", "message": "Alerts checked"})
+    try:
+        conn = get_db_connection()
+        before_total = conn.execute(
+            "SELECT COUNT(*) FROM alert_events"
+        ).fetchone()[0]
+        if alert_engine:
+            alert_engine.evaluate_alerts()
+        after_total = conn.execute(
+            "SELECT COUNT(*) FROM alert_events"
+        ).fetchone()[0]
+        delta = after_total - before_total
+        portfolio_id = 1
+        events_sql = """
+        SELECT e.id, e.alert_id, e.stock_id, e.triggered_value, e.triggered_at
+        FROM alert_events e
+        JOIN alerts a ON a.id = e.alert_id
+        WHERE a.portfolio_id = ?
+        ORDER BY e.triggered_at DESC
+        LIMIT 50
+        """
+        rows = conn.execute(events_sql, (portfolio_id,)).fetchall()
+        conn.close()
+        message = "No new alerts fired" if delta == 0 else f"{delta} alert(s) fired"
+        return jsonify({
+            "status": "success",
+            "message": message,
+            "metrics": {
+                "total_events": after_total,
+                "new_events": delta
+            },
+            "data": [dict(r) for r in rows]
+        })
+    except Exception as e:
+        return jsonify({"error_code": "server_error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     print(f"Starting server... DB Path: {db_path}")
