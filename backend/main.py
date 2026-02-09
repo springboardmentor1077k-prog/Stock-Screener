@@ -3,161 +3,77 @@ from pydantic import BaseModel
 import uuid
 from datetime import datetime
 
+from database import (
+    get_screening_data,
+    get_portfolio_holdings,
+    simulate_market_prices,
+    get_connection
+)
 from parser import parse_query_to_dsl
 from validator import validate_dsl
 from screener import build_where_clause
-from database import get_screening_data, get_connection
 
-# -------------------------
-# APP INIT
-# -------------------------
 app = FastAPI()
 
-# -------------------------
-# SIMPLE AUTH (IN-MEMORY)
-# -------------------------
 users_db = {}
 token_store = {}
-
-# -------------------------
-# REQUEST MODELS
-# -------------------------
-class AuthRequest(BaseModel):
-    username: str
-    password: str
 
 class ScreenRequest(BaseModel):
     query: str
 
-# -------------------------
-# AUTH ROUTES
-# -------------------------
+class AddHolding(BaseModel):
+    portfolio_id: int
+    stock_id: int
+    quantity: int
+    buy_price: float
+
 @app.post("/register")
-def register(data: AuthRequest):
-    users_db[data.username] = data.password
+def register(data: dict):
+    users_db[data["username"]] = data["password"]
     return {"message": "registered"}
 
 @app.post("/login")
-def login(data: AuthRequest):
-    if users_db.get(data.username) != data.password:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
+def login(data: dict):
+    if users_db.get(data["username"]) != data["password"]:
+        raise HTTPException(401, "Invalid credentials")
     token = str(uuid.uuid4())
-    token_store[token] = data.username
+    token_store[token] = data["username"]
     return {"token": token}
 
-# -------------------------
-# SNAPSHOT SCREENER
-# -------------------------
 @app.post("/screen")
 def screen(data: ScreenRequest, token: str = Header(None)):
-    if token not in token_store:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    dsl = parse_query_to_dsl(data.query)
+    validate_dsl(dsl)
+    where_clause = build_where_clause(dsl)
+    return {"data": get_screening_data(where_clause)}
 
-    try:
-        dsl = parse_query_to_dsl(data.query)
-        validate_dsl(dsl)
-
-        where_clause = build_where_clause(dsl)
-        results = get_screening_data(where_clause)
-
-        return {
-            "count": len(results),
-            "data": results
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-# -------------------------
-# CREATE ALERT
-# -------------------------
-@app.post("/alerts/create")
-def create_alert(data: ScreenRequest, token: str = Header(None)):
-    if token not in token_store:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    try:
-        # validate query
-        dsl = parse_query_to_dsl(data.query)
-        validate_dsl(dsl)
-
-        user = token_store[token]
-        conn = get_connection()
-        cur = conn.cursor()
-
-        cur.execute("""
-            INSERT INTO alerts (user_id, query, created_at)
-            VALUES (?, ?, ?)
-        """, (user, data.query, datetime.utcnow().isoformat()))
-
-        conn.commit()
-        conn.close()
-
-        return {"message": "Alert created"}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# -------------------------
-# EVALUATE ALERTS (TRIGGER ONCE)
-# -------------------------
-@app.get("/alerts/evaluate")
-def evaluate_alerts(token: str = Header(None)):
-    if token not in token_store:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    user = token_store[token]
+@app.post("/portfolio/create")
+def create_portfolio(token: str = Header(None)):
     conn = get_connection()
     cur = conn.cursor()
+    cur.execute("INSERT INTO portfolio VALUES (NULL, ?, ?)", (token_store[token], datetime.utcnow().isoformat()))
+    pid = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return {"portfolio_id": pid}
 
-    try:
-        # fetch user alerts
-        cur.execute("""
-            SELECT id, query
-            FROM alerts
-            WHERE user_id = ?
-        """, (user,))
-        alerts = cur.fetchall()
+@app.post("/portfolio/add")
+def add_holding(data: AddHolding, token: str = Header(None)):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO portfolio_holdings VALUES (NULL,?,?,?,?)",
+        (data.portfolio_id, data.stock_id, data.quantity, data.buy_price)
+    )
+    conn.commit()
+    conn.close()
+    return {"message": "added"}
 
-        triggered_events = []
+@app.get("/portfolio/view/{pid}")
+def view_portfolio(pid: int, token: str = Header(None)):
+    return {"holdings": get_portfolio_holdings(pid)}
 
-        for alert_id, query in alerts:
-            dsl = parse_query_to_dsl(query)
-            where_clause = build_where_clause(dsl)
-            stocks = get_screening_data(where_clause)
-
-            for stock in stocks:
-                stock_id = stock["stock_id"]
-
-                # check if already triggered
-                cur.execute("""
-                    SELECT 1 FROM alert_triggers
-                    WHERE alert_id = ? AND stock_id = ?
-                """, (alert_id, stock_id))
-
-                if cur.fetchone():
-                    continue
-
-                # record trigger
-                cur.execute("""
-                    INSERT INTO alert_triggers
-                    (alert_id, stock_id, triggered_at)
-                    VALUES (?, ?, ?)
-                """, (alert_id, stock_id, datetime.utcnow().isoformat()))
-
-                triggered_events.append({
-                    "alert_id": alert_id,
-                    "symbol": stock["symbol"],
-                    "company": stock["company"],
-                    "triggered_at": datetime.utcnow().isoformat()
-                })
-
-        conn.commit()
-        conn.close()
-
-        return {"triggered_alerts": triggered_events}
-
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=500, detail=str(e))
+@app.post("/market/simulate")
+def simulate_market(token: str = Header(None)):
+    simulate_market_prices()
+    return {"message": "market updated"}

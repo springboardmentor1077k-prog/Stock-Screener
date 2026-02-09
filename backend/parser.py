@@ -1,46 +1,95 @@
 import re
 
+# -------------------------
+# FIELD MAP
+# -------------------------
 FIELD_MAP = {
     "pe": "pe_ratio",
+    "p/e": "pe_ratio",
     "market cap": "market_cap",
+    "marketcap": "market_cap",
+    "sector": "sector",
     "profit": "profit",
     "net profit": "net_profit",
-    "sector": "sector"
+    "price": "close_price"
 }
 
+# -------------------------
+# OPERATOR MAP
+# -------------------------
 OPERATOR_MAP = {
-    "below": "<",
+    "<=": "<=",
+    ">=": ">=",
+    "<": "<",
+    ">": ">",
     "less than": "<",
-    "above": ">",
+    "below": "<",
     "greater than": ">",
-    "equals": "="
+    "above": ">",
+    "equals": "=",
+    "equal to": "="
 }
 
+# -------------------------
+# NORMALIZATION
+# -------------------------
+def normalize_query(q: str) -> str:
+    q = q.lower()
+
+    replacements = {
+        "<=": " less than or equal ",
+        ">=": " greater than or equal ",
+        "<": " less than ",
+        ">": " greater than "
+    }
+
+    for k, v in replacements.items():
+        q = q.replace(k, v)
+
+    q = re.sub(r"\s+", " ", q)
+    return q.strip()
+
+# -------------------------
+# PARSE CONDITION
+# -------------------------
+def parse_single_condition(text):
+    field = None
+    for k in FIELD_MAP:
+        if k in text:
+            field = FIELD_MAP[k]
+            break
+
+    if not field:
+        raise ValueError("Unsupported field")
+
+    operator = None
+    for k in OPERATOR_MAP:
+        if k in text:
+            operator = OPERATOR_MAP[k]
+            break
+
+    if not operator:
+        raise ValueError("Unsupported operator")
+
+    value_match = re.search(r"-?\d+(\.\d+)?", text)
+    if value_match:
+        value = float(value_match.group())
+    else:
+        value = text.split()[-1].upper()
+
+    return {
+        "node": "condition",
+        "field": field,
+        "operator": operator,
+        "value": value
+    }
+
+# -------------------------
+# PARSE QUERY TO DSL
+# -------------------------
 def parse_query_to_dsl(query: str):
-    q = query.lower().strip()
+    q = normalize_query(query)
 
-    # -------------------------
-    # QUARTERLY RULE (EXPLICIT)
-    # net profit above 0 last 4 quarters
-    # -------------------------
-    m = re.match(
-        r"(net profit|profit)\s+(above|below|equals)\s+(-?\d+)\s+last\s+(\d+)\s+quarters",
-        q
-    )
-
-    if m:
-        field_text, op_text, value, n = m.groups()
-        return {
-            "node": "quarterly",
-            "field": FIELD_MAP[field_text],
-            "operator": OPERATOR_MAP[op_text],
-            "value": int(value),
-            "n": int(n)
-        }
-
-    # -------------------------
-    # OR
-    # -------------------------
     if " or " in q:
         left, right = q.split(" or ", 1)
         return {
@@ -50,9 +99,6 @@ def parse_query_to_dsl(query: str):
             "right": parse_query_to_dsl(right)
         }
 
-    # -------------------------
-    # AND
-    # -------------------------
     if " and " in q:
         left, right = q.split(" and ", 1)
         return {
@@ -62,34 +108,4 @@ def parse_query_to_dsl(query: str):
             "right": parse_query_to_dsl(right)
         }
 
-    # -------------------------
-    # SNAPSHOT CONDITION
-    # -------------------------
-    field = None
-    for k in FIELD_MAP:
-        if k in q:
-            field = FIELD_MAP[k]
-            break
-
-    if not field:
-        raise ValueError("Unsupported field")
-
-    operator = None
-    for k in OPERATOR_MAP:
-        if k in q:
-            operator = OPERATOR_MAP[k]
-            break
-
-    if not operator:
-        raise ValueError("Unsupported operator")
-
-    value_match = re.search(r"-?\d+", q)
-    value = int(value_match.group()) if value_match else q.split()[-1].upper()
-
-    return {
-        "node": "condition",
-        "field": field,
-        "operator": operator,
-        "value": value
-    }
-
+    return parse_single_condition(q)
