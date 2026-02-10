@@ -15,30 +15,34 @@ SUPPORTED FIELDS AND OPERATIONS:
    - Accept variations: "PE ratio", "P/E ratio", "pe ratio", "price to earnings"
    - Accept phrases: "more than", "greater than", "above", "over", "less than", "below", "under", "equal to"
 
-2. Price to Book: price_to_book with operators >, >=, <, <=, =
+2. Market Cap: market_cap with operators >, >=, <, <=, =
+   - Accept variations: "market cap", "market capitalization", "market value"
+   - Accept values in billions: "1 billion" = 1000000000, "5B" = 5000000000
+
+3. Price to Book: price_to_book with operators >, >=, <, <=, =
    - Accept variations: "P/B ratio", "price to book", "book value ratio"
 
-3. Dividend Yield: dividend_yield with operators >, >=, <, <=, =
+4. Dividend Yield: dividend_yield with operators >, >=, <, <=, =
    - Accept variations: "dividend yield", "dividend", "yield"
 
-4. Beta: beta with operators >, >=, <, <=, =
+5. Beta: beta with operators >, >=, <, <=, =
    - Accept variations: "beta", "volatility", "risk"
 
-5. Profit Margin: profit_margin with operators >, >=, <, <=, =
+6. Profit Margin: profit_margin with operators >, >=, <, <=, =
    - Accept variations: "profit margin", "profitability", "margins"
 
-6. Market Cap Category: market_cap_category with = operator
+7. Market Cap Category: market_cap_category with = operator
    - Accept values: "Mega", "Large", "Mid", "Small", "Micro"
    - Accept variations: "large cap", "small cap", "mega cap"
 
-7. Country: country with = operator
+8. Country: country with = operator
    - Accept values: "US", "India", "China", etc.
    - Accept variations: "American", "Indian", "Chinese"
 
-8. ADR Status: is_adr with = operator
+9. ADR Status: is_adr with = operator
    - Accept variations: "ADR", "American Depositary Receipt"
 
-9. Quarterly net profit: net_profit with quarterly conditions
+10. Quarterly net profit: net_profit with quarterly conditions
    - Accept variations: "profit", "net profit", "earnings", "net earnings"
    - Accept phrases: "positive profit", "profitable", "positive earnings", "making profit"
    - Accept time phrases: "last N quarters", "past N quarters", "for N quarters", "over N quarters"
@@ -46,13 +50,14 @@ SUPPORTED FIELDS AND OPERATIONS:
 CONVERT NATURAL LANGUAGE:
 - "more than 15" -> operator: ">", value: 15
 - "greater than or equal to 10" -> operator: ">=", value: 10
+- "above 1 billion" -> operator: ">", value: 1000000000
 - "positive profit for last 8 quarters" -> type: "quarterly", field: "net_profit", condition: "positive", last_n: 8
 - "profitable for 4 quarters" -> type: "quarterly", field: "net_profit", condition: "positive", last_n: 4
 
 REJECT ONLY IF asking for:
 - Future data (forward PE, future profits, predictions)
 - Guaranteed/certain outcomes
-- Unsupported fields (revenue, growth rates, market cap comparisons, etc.)
+- Unsupported fields (revenue growth rates, price changes, etc.)
 
 If unsupported, return:
 {"error": "UNSUPPORTED_QUERY", "message": "This query asks for data we don't have. Try: 'PE ratio > 15' or 'positive profit last 4 quarters'"}

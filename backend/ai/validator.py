@@ -1,6 +1,12 @@
-ALLOWED_FIELDS = {"pe_ratio", "net_profit", "price_to_book", "dividend_yield", "beta", "profit_margin", "market_cap_category", "country", "is_adr"}
+ALLOWED_FIELDS = {
+    "pe_ratio", "eps", "market_cap", "roe", "debt_equity", 
+    "price_to_book", "dividend_yield", "profit_margin", "beta", "current_price",
+    "market_cap_category", "country", "is_adr", "sector", "industry",
+    "target_price", "recommendation", "upside"
+}
 ALLOWED_OPERATORS = {">", ">=", "<", "<=", "="}
 ALLOWED_QUARTERLY_CONDITIONS = {"positive", "negative"}
+ALLOWED_QUARTERLY_FIELDS = {"net_profit", "revenue"}
 
 def validate_dsl(dsl: dict):
     """Recursively validate DSL structure and content."""
@@ -10,7 +16,6 @@ def validate_dsl(dsl: dict):
         return validate_group(dsl)
     elif "conditions" in dsl:
         return validate_legacy_format(dsl)
-    
     else:
         raise ValueError("Invalid DSL format")
 
@@ -50,10 +55,12 @@ def validate_condition(cond: dict, index: int):
     """Validate a simple condition."""
     field = cond.get("field")
     if not field:
-        raise ValueError(f"Condition {index} missing 'field'")
+        raise ValueError(f"Condition {index} missing 'field'")    
+    if field in ALLOWED_QUARTERLY_FIELDS:
+        raise ValueError(f"Field '{field}' should use quarterly condition type, not regular condition")
     
     if field not in ALLOWED_FIELDS:
-        raise ValueError(f"Invalid field '{field}'. Allowed fields: {', '.join(ALLOWED_FIELDS)}")
+        raise ValueError(f"Invalid field '{field}'. Allowed fields: {', '.join(sorted(ALLOWED_FIELDS))}")
     
     operator = cond.get("operator")
     if operator not in ALLOWED_OPERATORS:
@@ -69,8 +76,8 @@ def validate_condition(cond: dict, index: int):
 def validate_quarterly_condition(cond: dict, index: int):
     """Validate a quarterly condition."""
     field = cond.get("field")
-    if field != "net_profit":
-        raise ValueError("Quarterly conditions only supported for net_profit")
+    if field not in ALLOWED_QUARTERLY_FIELDS:
+        raise ValueError(f"Quarterly conditions only supported for: {', '.join(ALLOWED_QUARTERLY_FIELDS)}")
     
     condition = cond.get("condition")
     if condition not in ALLOWED_QUARTERLY_CONDITIONS:
@@ -95,19 +102,35 @@ def validate_legacy_format(dsl: dict):
         if not isinstance(cond, dict):
             raise ValueError(f"Condition {i} must be a dictionary")
         
+        if cond.get("type") == "quarterly":
+            validate_quarterly_condition(cond, i)
+            continue
+        
         field = cond.get("field")
         if not field:
             raise ValueError(f"Condition {i} missing 'field'")
         
+        if field in ALLOWED_QUARTERLY_FIELDS:
+            if "type" not in cond:
+                raise ValueError(f"Field '{field}' requires 'type': 'quarterly'")
+            continue
+        
         if field not in ALLOWED_FIELDS:
-            raise ValueError(f"Invalid field '{field}'. Allowed fields: {', '.join(ALLOWED_FIELDS)}")
+            raise ValueError(f"Invalid field '{field}'. Allowed fields: {', '.join(sorted(ALLOWED_FIELDS))}")
 
         if "operator" in cond:
-            validate_condition(cond, i)
-        elif cond.get("type") == "quarterly":
-            validate_quarterly_condition(cond, i)
+            operator = cond.get("operator")
+            if operator not in ALLOWED_OPERATORS:
+                raise ValueError(f"Invalid operator '{operator}'. Allowed: {', '.join(ALLOWED_OPERATORS)}")
+            
+            value = cond.get("value")
+            if not isinstance(value, (int, float)):
+                raise ValueError(f"Condition {i} value must be a number")
+            
+            if value < 0:
+                raise ValueError(f"Condition {i} value must be non-negative")
         else:
-            raise ValueError(f"Condition {i} must have either 'operator' or 'type': 'quarterly'")
+            raise ValueError(f"Condition {i} must have 'operator'")
     
     logic = dsl.get("logic", "AND")
     if logic not in ["AND", "OR"]:
