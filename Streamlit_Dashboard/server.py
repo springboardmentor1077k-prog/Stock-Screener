@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 import sqlite3
 import os
 import sys
+import json
+import time
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
@@ -26,6 +28,39 @@ try:
     alert_engine = AlertEngine(db_path=db_path)
 except Exception:
     alert_engine = None
+
+# --- Redis Setup ---
+CACHE_TTL = int(os.getenv("CACHE_TTL", "60"))
+redis_client = None
+def init_redis():
+    global redis_client
+    if redis_client is not None:
+        return redis_client
+    try:
+        import redis
+        redis_client = redis.Redis(host="localhost", port=6379, db=0)
+        # Ping to verify
+        redis_client.ping()
+        print("Redis connected")
+    except Exception as e:
+        # Fallback to FakeRedis for local demo if real Redis not available
+        try:
+            import fakeredis
+            redis_client = fakeredis.FakeStrictRedis()
+            print(f"Using FakeRedis in-memory (Redis unavailable: {e})")
+        except Exception as fe:
+            redis_client = None
+            print(f"Redis unavailable and FakeRedis not usable: {e} | {fe}")
+    return redis_client
+
+def make_cache_key(endpoint: str, payload: dict) -> str:
+    try:
+        s = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    except Exception:
+        s = str(payload)
+    import hashlib
+    h = hashlib.sha256(s.encode("utf-8")).hexdigest()
+    return f"{endpoint}:{h}"
 
 def ensure_schema(conn):
     try:
@@ -61,6 +96,30 @@ def screen_stocks():
         sector = data.get('sector', 'All')
         strong_only = data.get('strong_only', False)
         market_cap_filter = data.get('market_cap', 'Any')
+        
+        # --- Redis Cache Check ---
+        rc = init_redis()
+        cache_payload = {
+            "query": query,
+            "sector": sector,
+            "strong_only": strong_only,
+            "market_cap": market_cap_filter
+        }
+        cache_key = make_cache_key("screener", cache_payload)
+        start_time = time.time()
+        if rc:
+            try:
+                cached = rc.get(cache_key)
+                if cached:
+                    print("CACHE HIT:", cache_key)
+                    resp = json.loads(cached.decode("utf-8"))
+                    resp["cached"] = True
+                    resp["latency_ms"] = int((time.time() - start_time) * 1000)
+                    return jsonify(resp)
+                else:
+                    print("CACHE MISS:", cache_key)
+            except Exception as e:
+                print(f"Cache read error: {e}")
 
         # Check if it's a "Sentence Query" (Longer, natural language)
         # Simple heuristic: if it contains spaces and > 1 word, treat as NL unless it's just a name
@@ -115,7 +174,18 @@ def screen_stocks():
         rows = cursor.fetchall()
         conn.close()
         results = [dict(r) for r in rows]
-        return jsonify({"status": "success", "data": results})
+        response_obj = {"status": "success", "data": results}
+        
+        # Store in cache with TTL
+        if rc:
+            try:
+                rc.setex(cache_key, CACHE_TTL, json.dumps(response_obj))
+            except Exception as e:
+                print(f"Cache write error: {e}")
+        
+        response_obj["cached"] = False
+        response_obj["latency_ms"] = int((time.time() - start_time) * 1000)
+        return jsonify(response_obj)
     except Exception as e:
         return jsonify({"error_code": "server_error", "message": str(e)}), 500
 
