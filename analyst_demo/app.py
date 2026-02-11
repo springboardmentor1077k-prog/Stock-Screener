@@ -37,9 +37,7 @@ with st.sidebar:
         st.success("Database reset to initial state!")
     
     st.markdown("---")
-    st.markdown("### Demo Scenarios")
-    st.info("1. Analyst Data: 'Show IT sector stocks'")
-    st.info("2. Valid Query: 'Show IT sector stocks with PE ratio less than 20'")
+    st.info("Disclaimer: Informational use only. No investment advice.")
 
 # Main Interface
 st.title("🤖 Natural Language to SQL Query Engine + Analyst Data")
@@ -47,6 +45,7 @@ st.markdown("""
 This system demonstrates a secure AI pipeline that converts natural language into SQL 
 to query a structured stock database and enriches it with Analyst Data.
 """)
+st.info("Global Disclaimer: This platform provides informational market data only and does not offer investment advice.")
 
 # Input
 queries_input = st.text_area("Enter your queries (one per line):", placeholder="e.g.,\nShow IT sector stocks", height=150)
@@ -72,7 +71,7 @@ if st.button("Execute Queries") or queries_input:
                 # Display Generated SQL
                 st.markdown(f"### {i}.1 Generated SQL")
                 st.code(response["generated_sql"], language="sql")
-                st.caption(response["explanation"])
+                st.caption("Explanation provided for transparency. Non-advisory, informational only.")
 
                 # Step 3: Execute SQL
                 st.markdown(f"### {i}.2 Database Results (Joined with Analyst Data)")
@@ -118,22 +117,21 @@ if st.button("Execute Queries") or queries_input:
                             }
                             
                             st.dataframe(display_df[final_cols], column_config=column_config)
+                            st.caption("Analyst targets are third-party opinions. Not advice. May be inaccurate or outdated.")
                             
                             # Show raw JSON response as requested
                             st.markdown("### {i}.3 JSON Response")
                             json_records = display_df[final_cols].to_dict(orient='records')
                             st.json(json_records)
                             
-                        except Exception as e:
-                             st.error(f"Error joining analyst data: {str(e)}")
+                        except Exception:
+                             st.error("System error. Please try again later.")
                              st.dataframe(screener_df) # Fallback
                 else:
-                    st.error(f"SQL Execution Error: {screener_df}")
+                    st.error("System error. Please try again later.")
 
             else:
-                st.error(f"Query {i} Rejected by Safety Layer")
-                st.markdown(f"**Reason:** {response['reason']}")
-                st.markdown(f"**Error:** {response['error_message']}")
+                st.error("Query rejected by compliance")
 
 # Footer
 st.markdown("---")

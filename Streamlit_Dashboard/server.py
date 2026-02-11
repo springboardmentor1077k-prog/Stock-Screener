@@ -131,10 +131,8 @@ def screen_stocks():
             ai_result = ai_backend.process_query(query)
             
             if not ai_result["is_valid"]:
-                 return jsonify({
-                    "status": "error", 
-                    "message": ai_result.get("error_message", "Invalid query") + ": " + ai_result.get("reason", "")
-                })
+                print("Compliance rejection")
+                return jsonify({"errorCode": "unsupported_query"}), 400
             
             sql = ai_result["generated_sql"]
             params = [] # AI backend generates complete SQL with values embedded for now
@@ -187,7 +185,7 @@ def screen_stocks():
         response_obj["latency_ms"] = int((time.time() - start_time) * 1000)
         return jsonify(response_obj)
     except Exception as e:
-        return jsonify({"error_code": "server_error", "message": str(e)}), 500
+        return jsonify({"message": "System error. Please try again later."}), 500
 
 @app.route('/portfolio', methods=['GET'])
 def get_portfolio():
@@ -217,7 +215,7 @@ def get_portfolio():
         conn.close()
         return jsonify({"status": "success", "data": [dict(r) for r in rows]})
     except Exception as e:
-        return jsonify({"error_code": "server_error", "message": str(e)}), 500
+        return jsonify({"message": "System error. Please try again later."}), 500
 
 @app.route('/alerts', methods=['GET', 'POST'])
 def handle_alerts():
@@ -232,7 +230,7 @@ def handle_alerts():
             return jsonify({"status": "success", "data": [dict(r) for r in rows]})
         except Exception as e:
             conn.close()
-            return jsonify({"error_code": "server_error", "message": str(e)}), 500
+            return jsonify({"message": "System error. Please try again later."}), 500
 
     elif request.method == 'POST':
         try:
@@ -254,7 +252,7 @@ def handle_alerts():
             return jsonify({"status": "success", "message": "Alert created"})
         except Exception as e:
             conn.close()
-            return jsonify({"error_code": "creation_error", "message": str(e)}), 500
+            return jsonify({"message": "System error. Please try again later."}), 500
 
 @app.route('/alerts/checks', methods=['POST'])
 def check_alerts():
@@ -291,7 +289,7 @@ def check_alerts():
             "data": [dict(r) for r in rows]
         })
     except Exception as e:
-        return jsonify({"error_code": "server_error", "message": str(e)}), 500
+        return jsonify({"message": "System error. Please try again later."}), 500
 
 if __name__ == '__main__':
     print(f"Starting server... DB Path: {db_path}")

@@ -2,6 +2,14 @@ import streamlit as st
 import pandas as pd
 import time
 from utils.api import fetch_data, post_data
+from utils.compliance import (
+    global_disclaimer,
+    banner_disclaimer,
+    screener_disclaimer,
+    analyst_disclaimer,
+    alerts_disclaimer,
+    compliance_level,
+)
 
 # --- Configuration ---
 PAGE_TITLE = "Stock Screener Dashboard"
@@ -26,13 +34,16 @@ def handle_api_response(response, success_callback, error_callback=None):
     """
     if response.get("status") == "success":
         return success_callback(response.get("data"))
-    elif "error_code" in response:
-        error_msg = response.get("message", "Unknown error")
-        st.error(f"Error ({response.get('error_code')}): {error_msg}")
+    elif "errorCode" in response:
+        st.error("Query rejected by compliance")
         if error_callback: error_callback(response)
         return None
     else:
-        st.error("Invalid response format from server")
+        msg = response.get("message")
+        if msg:
+            st.error(msg)
+        else:
+            st.error("Invalid response format from server")
         return None
 
 # --- Page Renderers ---
@@ -40,6 +51,8 @@ def handle_api_response(response, success_callback, error_callback=None):
 def render_screener_page():
     st.header("🔎 Stock Screener")
     st.caption("Filter stocks based on market criteria and AI analysis.")
+    st.info(banner_disclaimer())
+    st.caption(compliance_level("medium"))
 
     # --- Step 1: Query Input Section ---
     with st.container():
@@ -111,6 +124,7 @@ def render_screener_page():
                         "company_name": "Company"
                     }
                 )
+                st.caption(screener_disclaimer())
             else:
                 st.info("No matching stocks found. Try adjusting your filters.")
                 
@@ -119,6 +133,8 @@ def render_screener_page():
 def render_portfolio_page():
     st.header("💼 My Portfolio")
     st.caption("Track your current holdings and performance.")
+    st.info(banner_disclaimer())
+    st.caption(compliance_level("very_high"))
     
     col1, col2 = st.columns([3, 1])
     with col2:
@@ -161,12 +177,15 @@ def render_portfolio_page():
                 "company_name": "Company"
             }
         )
+        st.caption(global_disclaimer())
 
     handle_api_response(response, show_portfolio)
 
 def render_alerts_page():
     st.header("🔔 Price Alerts")
     st.caption("Manage your stock price alerts.")
+    st.info(banner_disclaimer())
+    st.caption(compliance_level("medium"))
     
     # Create Alert Form
     with st.form("create_alert_form"):
@@ -201,6 +220,7 @@ def render_alerts_page():
                     handle_api_response(response, lambda d: on_success(d))
             else:
                 st.warning("Please enter a valid symbol and price.")
+        st.caption(alerts_disclaimer())
 
     st.divider()
     
@@ -222,6 +242,7 @@ def render_alerts_page():
                     "is_active": "Active?"
                 }
             )
+            st.caption(alerts_disclaimer())
         else:
             st.info("No active alerts.")
 
@@ -241,9 +262,7 @@ def main():
         
         st.divider()
         st.markdown("### About")
-        st.info(
-            "This dashboard connects to our advanced Stock Screener API to help you find the best investment opportunities."
-        )
+        st.info(global_disclaimer())
 
     # Main Page Content
     # st.title("Stock Screener Dashboard") # Already in renderers or sidebar title

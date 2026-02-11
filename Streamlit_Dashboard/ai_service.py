@@ -3,8 +3,9 @@ import re
 class AIBackend:
     def __init__(self):
         self.invalid_keywords = [
-            "predict", "forecast", "future", "next quarter", "next year",
-            "boom", "will grow", "should i buy", "advice", "recommend"
+            "predict", "forecast", "future", "future growth", "next quarter", "next year",
+            "guarantee", "recommended", "recommendation",
+            "should i buy", "strong buy", "good buy", "buy", "sell", "advice"
         ]
 
     def process_query(self, user_query):
@@ -18,10 +19,10 @@ class AIBackend:
         # 1. Validation Layer
         for keyword in self.invalid_keywords:
             if keyword in user_query_lower:
+                print(f"COMPLIANCE REJECT: {keyword}")
                 return {
                     "is_valid": False,
-                    "error_message": "Invalid or unsupported query",
-                    "reason": f"Queries related to '{keyword}' are not supported. This system supports only descriptive data queries."
+                    "errorCode": "unsupported_query"
                 }
 
         # 2. SQL Generation Layer (Rule-based for Demo Stability)
@@ -36,8 +37,7 @@ class AIBackend:
             # Fallback for queries that don't match any known pattern but aren't explicitly invalid
             return {
                 "is_valid": False,
-                "error_message": "Could not understand query structure",
-                "reason": "The query structure is too complex or ambiguous for this demo."
+                "errorCode": "unsupported_query"
             }
 
     def _generate_sql(self, query):
