@@ -2,7 +2,7 @@ import requests
 import streamlit as st
 import json
 
-BASE_URL = "http://127.0.0.1:5000"
+BASE_URL = "http://127.0.0.1:8000"
 
 def fetch_data(endpoint, params=None):
     """
