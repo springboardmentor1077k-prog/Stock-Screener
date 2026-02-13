@@ -13,7 +13,7 @@ from utils.logging_config import logger
 from utils.exceptions import AppBaseException, ErrorResponse
 from models import (
     ScreenRequest, ScreenResponse, 
-    PortfolioResponse, 
+    PortfolioResponse, PortfolioAddRequest,
     AlertCreateRequest, AlertResponse, AlertCheckResponse
 )
 from services.screener import screener_service
@@ -109,6 +109,16 @@ async def get_portfolio():
     # In a real app, we'd get user_id from auth token
     data = portfolio_service.get_portfolio(user_id=1)
     return {"status": "success", "data": data}
+
+@app.post("/portfolio", response_model=dict)
+async def add_to_portfolio(request: PortfolioAddRequest):
+    result = portfolio_service.add_to_portfolio(
+        symbol=request.symbol,
+        quantity=request.quantity,
+        avg_buy_price=request.avg_buy_price,
+        user_id=1
+    )
+    return result
 
 @app.get("/alerts", response_model=AlertResponse)
 async def get_alerts():

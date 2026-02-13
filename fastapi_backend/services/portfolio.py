@@ -56,4 +56,48 @@ class PortfolioService:
             logger.error(f"Portfolio fetch failure: {e}", exc_info=True)
             raise SystemException()
 
+    @db_retry
+    def add_to_portfolio(self, symbol: str, quantity: int, avg_buy_price: float, user_id: int = 1) -> Dict[str, Any]:
+        portfolio_id = user_id
+        try:
+            conn = get_db_connection()
+            
+            # Check if stock exists
+            stock = conn.execute("SELECT symbol FROM stocks WHERE symbol = ?", (symbol,)).fetchone()
+            if not stock:
+                conn.close()
+                return {"status": "error", "message": f"Stock {symbol} not found in database."}
+
+            # Check if holding exists
+            holding = conn.execute(
+                "SELECT quantity, avg_buy_price FROM portfolio_holdings WHERE portfolio_id = ? AND stock_id = ?", 
+                (portfolio_id, symbol)
+            ).fetchone()
+
+            if holding:
+                # Update existing holding (simplified: weighted average)
+                old_qty = holding['quantity']
+                old_price = holding['avg_buy_price']
+                new_qty = old_qty + quantity
+                new_price = ((old_qty * old_price) + (quantity * avg_buy_price)) / new_qty
+                
+                conn.execute(
+                    "UPDATE portfolio_holdings SET quantity = ?, avg_buy_price = ? WHERE portfolio_id = ? AND stock_id = ?",
+                    (new_qty, new_price, portfolio_id, symbol)
+                )
+            else:
+                # Insert new holding
+                conn.execute(
+                    "INSERT INTO portfolio_holdings (portfolio_id, stock_id, quantity, avg_buy_price) VALUES (?, ?, ?, ?)",
+                    (portfolio_id, symbol, quantity, avg_buy_price)
+                )
+            
+            conn.commit()
+            conn.close()
+            return {"status": "success", "message": f"Added {quantity} shares of {symbol} to portfolio."}
+
+        except Exception as e:
+            logger.error(f"Portfolio add failure: {e}", exc_info=True)
+            raise SystemException()
+
 portfolio_service = PortfolioService()

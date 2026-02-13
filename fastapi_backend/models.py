@@ -33,6 +33,11 @@ class PortfolioResponse(BaseModel):
     status: str = "success"
     data: List[PortfolioItem]
 
+class PortfolioAddRequest(BaseModel):
+    symbol: str = Field(..., pattern="^[A-Z]{1,10}$")
+    quantity: int = Field(..., gt=0)
+    avg_buy_price: float = Field(..., gt=0)
+
 class AlertCreateRequest(BaseModel):
     symbol: str = Field(..., pattern="^[A-Z]{1,10}$")
     condition: str = Field(..., description="'Above Price' or 'Below Price'")

@@ -5,13 +5,24 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 from utils.api import fetch_data, post_data
+from utils.auth import init_auth_session, logout
+from auth_ui import render_auth_interface
 from utils.compliance import (
     global_disclaimer,
     banner_disclaimer,
     screener_disclaimer,
     alerts_disclaimer,
+    portfolio_disclaimer,
+    dashboard_disclaimer,
     compliance_level,
 )
+
+# --- Authentication Logic ---
+init_auth_session()
+
+if not st.session_state.authenticated:
+    render_auth_interface()
+    st.stop()
 
 # --- Configuration ---
 PAGE_TITLE = "Stock Analytics Platform"
@@ -190,12 +201,17 @@ with st.sidebar:
     st.markdown("---")
     st.caption(f"**{compliance_level('medium')}**")
     st.caption(global_disclaimer())
+    
+    st.markdown("---")
+    if st.button("🚪 Logout", use_container_width=True):
+        logout()
 
 # --- Page Content Router ---
 active_tab = st.session_state.active_tab
 
 if active_tab == "Dashboard":
-    section_header("Welcome back, User", "Market overview and your performance at a glance.")
+    section_header(f"Welcome back, {st.session_state.username}", "Market overview and your performance at a glance.")
+    st.info(dashboard_disclaimer())
     
     # Quick Stats
     col1, col2, col3, col4 = st.columns(4)
@@ -305,7 +321,34 @@ elif active_tab == "Screener":
 
 elif active_tab == "Portfolio":
     section_header("My Portfolio", "Manage your holdings and monitor real-time performance.")
+    st.info(portfolio_disclaimer())
     
+    # Add to Portfolio Section
+    with st.expander("➕ Add New Position", expanded=False):
+        with st.form("add_portfolio_form"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                new_symbol = st.text_input("Stock Symbol", placeholder="AAPL").upper()
+            with col2:
+                new_qty = st.number_input("Quantity", min_value=1, step=1)
+            with col3:
+                new_price = st.number_input("Avg Buy Price", min_value=0.01, step=0.01, format="%.2f")
+            
+            add_submit = st.form_submit_button("Add to Portfolio", use_container_width=True)
+            if add_submit:
+                if not new_symbol:
+                    st.error("Symbol is required.")
+                else:
+                    payload = {
+                        "symbol": new_symbol,
+                        "quantity": new_qty,
+                        "avg_buy_price": new_price
+                    }
+                    response = post_data("portfolio", payload)
+                    if handle_api_response(response, f"Successfully added {new_qty} shares of {new_symbol}"):
+                        time.sleep(1)
+                        st.rerun()
+
     with st.spinner("Fetching portfolio data..."):
         response = fetch_data("portfolio")
         res = handle_api_response(response)
@@ -344,7 +387,8 @@ elif active_tab == "Portfolio":
                 st.dataframe(
                     df[["symbol", "company_name", "quantity", "avg_buy_price", "current_price", "total_value", "profit_loss"]],
                     use_container_width=True,
-                    hide_index=True
+                    hide_index=True,
+                    height=500  # Increased height to show more rows
                 )
 
 elif active_tab == "Alert Center":

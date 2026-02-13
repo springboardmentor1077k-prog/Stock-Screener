@@ -13,6 +13,12 @@ def analyst_disclaimer():
 def alerts_disclaimer():
     return "Alerts notify condition matches. They are not trading signals or advice."
 
+def portfolio_disclaimer():
+    return "Portfolio values are estimates based on last known market prices. Performance is not guaranteed."
+
+def dashboard_disclaimer():
+    return "Market data displayed on the dashboard may be delayed. For informational purposes only."
+
 def compliance_level(level):
     if level == "low":
         return "Compliance Level: Low (Data display)"
