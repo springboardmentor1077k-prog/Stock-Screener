@@ -3,6 +3,9 @@ from pydantic import BaseModel
 from datetime import datetime
 import uuid
 
+# -----------------------------------------
+# EXISTING IMPORTS (UNCHANGED)
+# -----------------------------------------
 from parser import parse_query_to_dsl
 from validator import validate_dsl
 from screener import build_where_clause
@@ -14,10 +17,33 @@ from database import (
     simulate_market_prices
 )
 
+# -----------------------------------------
+# REDIS IMPORTS (SAFE OPTIONAL MODE)
+# -----------------------------------------
+import redis
+import json
+import hashlib
+
 # -------------------------------------------------
 # APP INIT
 # -------------------------------------------------
 app = FastAPI(title="AI Stock Screener")
+
+# -------------------------------------------------
+# REDIS SAFE CONNECTION (NO CRASH IF OFF)
+# -------------------------------------------------
+try:
+    redis_client = redis.Redis(
+        host="localhost",
+        port=6379,
+        decode_responses=True
+    )
+    redis_client.ping()
+    REDIS_AVAILABLE = True
+    print("✅ Redis connected")
+except Exception:
+    REDIS_AVAILABLE = False
+    print("⚠️ Redis not available — running in SAFE MODE")
 
 # -------------------------------------------------
 # SIMPLE AUTH (IN-MEMORY – DEMO SAFE)
@@ -79,7 +105,7 @@ def require_auth(token: str):
 
 
 # -------------------------------------------------
-# SCREENER
+# SCREENER (SAFE OPTIONAL REDIS CACHE)
 # -------------------------------------------------
 @app.post("/screen")
 def screen(data: ScreenRequest, token: str = Header(None)):
@@ -89,8 +115,35 @@ def screen(data: ScreenRequest, token: str = Header(None)):
         dsl = parse_query_to_dsl(data.query)
         validate_dsl(dsl)
         where_clause = build_where_clause(dsl)
-        results = get_screening_data(where_clause)
+
+        results = None
+
+        # ----------------------------------
+        # USE REDIS ONLY IF AVAILABLE
+        # ----------------------------------
+        if REDIS_AVAILABLE:
+            try:
+                raw_key = f"screen:{where_clause}"
+                cache_key = hashlib.md5(raw_key.encode()).hexdigest()
+
+                cached = redis_client.get(cache_key)
+
+                if cached:
+                    print("✅ CACHE HIT")
+                    results = json.loads(cached)
+                else:
+                    print("❌ CACHE MISS")
+                    results = get_screening_data(where_clause)
+                    redis_client.setex(cache_key, 60, json.dumps(results))
+            except Exception:
+                print("⚠️ Redis error — fallback to DB")
+                results = get_screening_data(where_clause)
+        else:
+            print("⚠️ SAFE MODE (Redis OFF)")
+            results = get_screening_data(where_clause)
+
         return {"count": len(results), "data": results}
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -155,7 +208,7 @@ def sell_stock(holding_id: int, token: str = Header(None)):
 
 
 # -------------------------------------------------
-# ALERTS
+# ALERTS (UNCHANGED)
 # -------------------------------------------------
 @app.post("/alerts/create")
 def create_alert(data: AlertCreateRequest, token: str = Header(None)):
@@ -218,10 +271,17 @@ def check_alerts(token: str = Header(None)):
 
 
 # -------------------------------------------------
-# MARKET SIMULATION
+# MARKET SIMULATION (CACHE CLEAR ONLY IF REDIS ON)
 # -------------------------------------------------
 @app.post("/simulate")
 def simulate_market(token: str = Header(None)):
     require_auth(token)
     simulate_market_prices()
+
+    if REDIS_AVAILABLE:
+        try:
+            redis_client.flushdb()
+        except Exception:
+            pass
+
     return {"message": "Market prices updated"}
