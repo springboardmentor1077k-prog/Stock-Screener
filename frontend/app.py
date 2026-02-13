@@ -7,6 +7,44 @@ API_URL = "http://127.0.0.1:8000"
 st.set_page_config(page_title="AI Stock Explorer", layout="wide")
 
 # =====================================================
+# STYLE
+# =====================================================
+st.markdown("""
+<style>
+.block-container { padding-top:1rem; }
+
+.fintech-header {
+    background:linear-gradient(90deg,#0f1c2e,#1f3b73);
+    color:#ffffff;
+    padding:14px 18px;
+    border-radius:10px;
+    margin-bottom:14px;
+    font-size:26px;
+    font-weight:700;
+}
+
+.fintech-card {
+    background:#111827;
+    padding:16px;
+    border-radius:10px;
+    margin-bottom:14px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# =====================================================
+# HEADER
+# =====================================================
+st.markdown(
+    '<div class="fintech-header">📊 AI Stock Explorer</div>',
+    unsafe_allow_html=True
+)
+
+st.info(
+    "📘 Algorithm-based screening and portfolio simulation for educational exploration."
+)
+
+# =====================================================
 # SESSION STATE
 # =====================================================
 if "token" not in st.session_state:
@@ -24,17 +62,18 @@ def headers():
 
 
 # =====================================================
-# LOGIN / REGISTER
+# LOGIN PAGE
 # =====================================================
 def login_page():
-    st.title("AI Stock Explorer")
-    st.caption("Search stocks using natural language")
+
+    st.subheader("Access Portal")
 
     tab1, tab2 = st.tabs(["Login", "Register"])
 
     with tab1:
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
+
         if st.button("Login"):
             r = requests.post(
                 f"{API_URL}/login",
@@ -43,13 +82,14 @@ def login_page():
             if r.status_code == 200:
                 st.session_state.token = r.json()["token"]
                 st.session_state.page = "screener"
-                st.success("Login successful")
+                st.rerun()
             else:
                 st.error("Invalid credentials")
 
     with tab2:
         username = st.text_input("New Username")
         password = st.text_input("New Password", type="password")
+
         if st.button("Register"):
             r = requests.post(
                 f"{API_URL}/register",
@@ -65,22 +105,20 @@ def login_page():
 # MAIN APP
 # =====================================================
 def screener_page():
-    st.title("AI Stock Screener")
 
     if st.button("Logout"):
         st.session_state.clear()
         st.session_state.page = "login"
-        return
+        st.rerun()
 
     # -------------------------------------------------
     # SCREENER
     # -------------------------------------------------
-    st.subheader("Stock Screener")
+    st.markdown('<div class="fintech-card">', unsafe_allow_html=True)
 
-    query = st.text_input(
-        "Enter stock query",
-        placeholder="pe below 20 and sector equals IT"
-    )
+    st.subheader("📊 Stock Screener")
+
+    query = st.text_input("Enter stock query")
 
     if st.button("Search"):
         r = requests.post(
@@ -89,20 +127,30 @@ def screener_page():
             json={"query": query}
         )
         if r.status_code == 200:
-            st.session_state.screener_results = r.json()["data"]
-        else:
-            st.error(r.text)
+            data = r.json()
+            st.session_state.screener_results = data["data"]
+            st.success(f"{data['count']} results fetched")
 
     if st.session_state.screener_results:
         df = pd.DataFrame(st.session_state.screener_results)
         st.dataframe(df, use_container_width=True)
 
-    st.divider()
+        st.markdown("""
+        <div style="background-color:#2b0b0b;border-left:5px solid #ff4b4b;
+        padding:10px;border-radius:6px;">
+        ⚠️ Screening results are generated from rule-based matching and
+        presented for informational exploration.
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # -------------------------------------------------
-    # PORTFOLIO CONTROLS
+    # PORTFOLIO SECTION
     # -------------------------------------------------
-    st.header("Portfolio")
+    st.markdown('<div class="fintech-card">', unsafe_allow_html=True)
+
+    st.header("💼 Portfolio")
 
     col1, col2 = st.columns(2)
 
@@ -114,7 +162,6 @@ def screener_page():
             )
             if r.status_code == 200:
                 st.session_state.portfolio_id = r.json()["portfolio_id"]
-                st.success(f"Portfolio created (ID {st.session_state.portfolio_id})")
 
     with col2:
         pid = st.number_input("Load Portfolio ID", min_value=1, step=1)
@@ -123,22 +170,22 @@ def screener_page():
 
     if not st.session_state.portfolio_id:
         st.info("Create or load a portfolio to continue.")
+        st.markdown('</div>', unsafe_allow_html=True)
         return
 
     # -------------------------------------------------
-    # ADD STOCK TO PORTFOLIO (EXPLICIT & STABLE)
+    # ADD STOCK
     # -------------------------------------------------
     st.subheader("Add Stock to Portfolio")
 
     with st.form("add_stock_form"):
-        stock_id = st.number_input("Stock ID (1–25)", min_value=1, max_value=25)
+        stock_id = st.number_input("Stock ID", min_value=1)
         quantity = st.number_input("Quantity", min_value=1)
-        buy_price = st.number_input("Buy Price (₹)", min_value=1.0)
-
+        buy_price = st.number_input("Buy Price", min_value=1.0)
         submitted = st.form_submit_button("Add Stock")
 
         if submitted:
-            r = requests.post(
+            requests.post(
                 f"{API_URL}/portfolio/add",
                 headers=headers(),
                 json={
@@ -148,17 +195,11 @@ def screener_page():
                     "buy_price": buy_price
                 }
             )
-            if r.status_code == 200:
-                st.success("Stock added to portfolio")
-            else:
-                st.error("Failed to add stock")
-
-    st.divider()
 
     # -------------------------------------------------
-    # VIEW PORTFOLIO
+    # VIEW PORTFOLIO (RESTORED)
     # -------------------------------------------------
-    st.subheader("My Holdings")
+    st.subheader("📄 View Portfolio")
 
     r = requests.get(
         f"{API_URL}/portfolio/{st.session_state.portfolio_id}",
@@ -168,34 +209,20 @@ def screener_page():
     holdings = r.json() if r.status_code == 200 else []
 
     if holdings:
-        holdings_df = pd.DataFrame([
-            {
-                "Holding ID": h["holding_id"],
-                "Symbol": h["symbol"],
-                "Company": h["company"],
-                "Quantity": h["quantity"],
-                "Buy Price": h["buy_price"],
-                "Buy Time": h["buy_time"]
-            }
-            for h in holdings
-        ])
+        holdings_df = pd.DataFrame(holdings)
         st.dataframe(holdings_df, use_container_width=True)
 
-        sell_id = st.number_input("Holding ID to Sell", min_value=1, step=1)
+        sell_id = st.number_input("Holding ID to Sell", min_value=1)
         if st.button("Sell Holding"):
-            r = requests.delete(
+            requests.delete(
                 f"{API_URL}/portfolio/sell/{sell_id}",
                 headers=headers()
             )
-            if r.status_code == 200:
-                st.success("Stock sold")
-    else:
-        st.info("No stocks in portfolio")
 
     # -------------------------------------------------
-    # POSITION SUMMARY
+    # POSITION SUMMARY (RESTORED)
     # -------------------------------------------------
-    st.subheader("Position Summary (If You Sell Now)")
+    st.subheader("📊 Position Summary")
 
     if holdings:
         summary_rows = []
@@ -206,21 +233,21 @@ def screener_page():
 
             summary_rows.append({
                 "Symbol": h["symbol"],
-                "Buy Price": h["buy_price"],
-                "Current Price": h["current_price"],
-                "Quantity": h["quantity"],
-                "Invested Amount": invested,
+                "Invested": invested,
                 "Current Value": current_value,
-                "Profit / Loss": pnl,
-                "Summary": "Profit" if pnl >= 0 else "Loss"
+                "PnL": pnl
             })
 
         st.dataframe(pd.DataFrame(summary_rows), use_container_width=True)
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
     # -------------------------------------------------
     # MARKET SIMULATION
     # -------------------------------------------------
-    st.subheader("Market Simulation")
+    st.markdown('<div class="fintech-card">', unsafe_allow_html=True)
+
+    st.subheader("📈 Market Simulation")
 
     if st.button("Simulate Market Prices"):
         requests.post(
@@ -229,22 +256,23 @@ def screener_page():
         )
         st.success("Market prices updated")
 
-    st.divider()
+    st.markdown('</div>', unsafe_allow_html=True)
 
     # -------------------------------------------------
     # ALERTS
     # -------------------------------------------------
-    st.header("Alerts")
+    st.markdown('<div class="fintech-card">', unsafe_allow_html=True)
+
+    st.header("🔔 Alerts")
 
     alert_query = st.text_input("Create alert query")
+
     if st.button("Create Alert"):
-        r = requests.post(
+        requests.post(
             f"{API_URL}/alerts/create",
             headers=headers(),
             json={"query": alert_query}
         )
-        if r.status_code == 200:
-            st.success("Alert created")
 
     if st.button("Check Alerts"):
         r = requests.get(
@@ -255,8 +283,15 @@ def screener_page():
             alerts = r.json()["triggered_alerts"]
             if alerts:
                 st.dataframe(pd.DataFrame(alerts), use_container_width=True)
-            else:
-                st.info("No new alerts")
+
+    st.markdown("""
+    <div style="background-color:#2b0b0b;border-left:5px solid #ff4b4b;
+    padding:10px;border-radius:6px;">
+    🔔 Alerts notify when selected conditions match market data.
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 # =====================================================
@@ -266,3 +301,13 @@ if st.session_state.page == "login":
     login_page()
 else:
     screener_page()
+
+# =====================================================
+# FOOTER
+# =====================================================
+st.markdown("""
+<hr>
+<div style='font-size:12px;color:gray;text-align:center;'>
+Educational platform demonstrating stock screening, portfolio tracking and alerts.
+</div>
+""", unsafe_allow_html=True)
