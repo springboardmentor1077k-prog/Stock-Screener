@@ -28,7 +28,8 @@ A full-stack stock screening and portfolio platform with natural-language querie
 │   └── services/            # Screener engine, portfolio, alerts, data ingestion/fetcher
 ├── frontend/
 │   └── streamlit_app.py     # Main Streamlit UI (Screener, Portfolio, Alerts, AI Advisor)
-├── ai_layer/                # LLM parser (NLP → DSL)
+├── ai_layer/
+    |-- llm_parser_service.py              # LLM parser (NLP → DSL)
 ├── config/
 │   ├── .env                 # Your secrets (not committed)
 │   ├── .env.example         # Template for env vars
