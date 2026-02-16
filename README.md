@@ -175,7 +175,3 @@ The Streamlit app expects the backend at **port 8002**. Register or log in, then
 - Passwords are hashed with bcrypt; queries use parameterized SQL.
 
 ---
-
-## License and disclaimer
-
-This project is for **educational and demonstration purposes only**. It is not licensed or intended as financial, investment, or tax advice. Use at your own risk.
