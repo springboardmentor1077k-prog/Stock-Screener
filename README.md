@@ -38,7 +38,6 @@ A full-stack stock screening and portfolio platform with natural-language querie
 │   ├── run_frontend.py      # Start Streamlit (port 8501)
 │   ├── init_db.py           # Create DB tables
 │   ├── ingest_sample_stocks.py   # Bulk ingest from Alpha Vantage
-│   ├── import_from_bhavik_db.py  # Import from Stock-Screener DB
 │   ├── seed_local_sample_data.py # Seed a few sample stocks
 │   └── debug_db_snapshot.py      # Print DB row counts/samples
 ├── stock_screener.db        # SQLite DB (create with init_db + ingest/import)
