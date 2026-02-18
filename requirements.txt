@@ -11,3 +11,5 @@ PyJWT
 yfinance
 pandas
 openai
+redis
+hiredis

@@ -6,7 +6,6 @@ import pandas as pd
 API_URL = os.getenv("API_URL", "http://127.0.0.1:8001")
 
 st.set_page_config(page_title="AI Stock Screener", layout="wide")
-st.caption("⚠️ Disclaimer: This tool is for educational and informational purposes only. It does not provide financial advice or investment recommendations.")
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
 if 'token' not in st.session_state:
@@ -199,19 +198,66 @@ if not st.session_state.authenticated:
                     st.error("Please fill in all fields")
 
 else:
-    col1, col2 = st.columns([3, 1])
+    col1, col2, col3 = st.columns([3, 0.5, 0.5])
     with col1:
         st.write(f"Welcome, {st.session_state.user_name}!")
+    
+    # Check for new alert notifications
+    def get_new_notifications():
+        """Get new alert notifications."""
+        try:
+            headers = {"Authorization": f"Bearer {st.session_state.token}"}
+            response = requests.get(f"{API_URL}/alerts/notifications", 
+                                   params={"limit": 5}, 
+                                   headers=headers)
+            if response.status_code == 200:
+                notifications = response.json()
+                # Filter only new notifications (within last hour)
+                return [n for n in notifications if n.get('status') == 'new']
+            return []
+        except:
+            return []
+    
+    # Display compact notification bell
+    new_notifications = get_new_notifications()
     with col2:
+        if new_notifications:
+            if st.button(f"🔔 {len(new_notifications)}", key="notification_bell", help=f"{len(new_notifications)} new alert(s)"):
+                st.session_state.show_notifications = not st.session_state.get('show_notifications', False)
+        else:
+            st.button("🔔", key="notification_bell_empty", disabled=True, help="No new alerts")
+    
+    with col3:
         if st.button("Logout"):
             logout_user()
             st.rerun()
+    
+    # Show notifications popup if bell is clicked
+    if st.session_state.get('show_notifications', False) and new_notifications:
+        with st.expander("🔔 New Alerts", expanded=True):
+            for notif in new_notifications:
+                st.write(f"**{notif['symbol']}** triggered")
+                st.caption(f"{notif['triggered_at']}")
+            
+            # Add refresh button
+            if st.button("🔄 Refresh Alerts", key="refresh_notifications"):
+                try:
+                    headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                    requests.post(f"{API_URL}/alerts/check", headers=headers)
+                    st.rerun()
+                except:
+                    pass
+    
+    # Disclaimer banner
+    st.info("⚠️ **Disclaimer:** This application is for educational and informational purposes only. The data, analysis, and recommendations provided should not be considered as financial advice. Always consult with a qualified financial advisor before making investment decisions.")
     
     st.divider()
 
     tab1, tab2, tab3 = st.tabs(["📊 Stock Screener", "💼 My Portfolios", "🔔 Price Alerts"])
     
     with tab1:
+        st.warning("📊 **Stock Screener Disclaimer:** The screening results are based on historical data and should not be considered as investment recommendations. Past performance does not guarantee future results. Always conduct your own research before making investment decisions.")
+        
         query = st.text_input(
             "Enter screening query",
             placeholder="e.g. PE ratio >= 5 and positive net profit for last 4 quarters",
@@ -372,6 +418,8 @@ else:
                         st.rerun()
     
     with tab2:
+        st.warning("💼 **Portfolio Disclaimer:** Portfolio tracking is for educational and informational purposes only. The values shown are based on current market data and may not reflect actual trading prices. This tool does not provide investment advice or recommendations.")
+        
         st.subheader("💼 Portfolio Management")
         def get_portfolios():
             """Get user's portfolios."""
@@ -505,7 +553,30 @@ else:
 
     
     with tab3:
-        st.subheader("🔔 Price Alert Management")
+        st.warning("🔔 **Price Alerts Disclaimer:** Price alerts are for informational purposes only and should not be considered as trading signals or investment advice. Alert triggers are based on available market data and may have delays. Always verify information independently before making any investment decisions.")
+        
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.subheader("🔔 Price Alert Management")
+        with col2:
+            if st.button("🔄 Check Alerts Now", help="Manually check all alerts against current stock prices"):
+                with st.spinner("Checking alerts..."):
+                    try:
+                        headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                        response = requests.post(f"{API_URL}/alerts/check", headers=headers)
+                        if response.status_code == 200:
+                            result = response.json()
+                            results = result.get('results', {})
+                            triggered = results.get('triggered', 0)
+                            if triggered > 0:
+                                st.success(f"✅ Checked alerts! {triggered} alert(s) triggered.")
+                            else:
+                                st.info("✅ Checked alerts. No new triggers.")
+                            st.rerun()
+                        else:
+                            st.error("Failed to check alerts")
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
         
         def get_alerts():
             """Get user's alerts."""
@@ -672,6 +743,18 @@ else:
             for idx, alert in enumerate(alerts):
                 alert_key = f"{alert['alert_id']}"
                 is_selected = alert_key in st.session_state.selected
+                
+                # Check if triggered recently (within last hour)
+                is_new_trigger = False
+                last_triggered_display = "Never"
+                if pd.notnull(alert['last_triggered']):
+                    last_triggered_time = pd.to_datetime(alert['last_triggered'])
+                    time_diff = pd.Timestamp.now() - last_triggered_time
+                    is_new_trigger = time_diff.total_seconds() < 3600  # Within 1 hour
+                    last_triggered_display = last_triggered_time.strftime('%Y-%m-%d %H:%M')
+                    if is_new_trigger:
+                        last_triggered_display = f"🆕 {last_triggered_display}"
+                
                 selection_data.append({
                     'Select': is_selected,
                     'alert_id': alert['alert_id'],
@@ -681,8 +764,7 @@ else:
                     'Op': alert['operator'],
                     'Threshold': f"{alert['threshold']:,.2f}",
                     'Active': '✅' if alert['is_active'] else '❌',
-                    'Triggered': alert['times_triggered'],
-                    'Last Triggered': pd.to_datetime(alert['last_triggered']).strftime('%Y-%m-%d %H:%M') if pd.notnull(alert['last_triggered']) else "Never"
+                    'Last Triggered': last_triggered_display
                 })
             
             edited_df = st.data_editor(
@@ -695,7 +777,7 @@ else:
                     ),
                     "alert_id": None,  
                 },
-                disabled=["Symbol", "Company", "Metric", "Op", "Threshold", "Active", "Triggered", "Last Triggered"],
+                disabled=["Symbol", "Company", "Metric", "Op", "Threshold", "Active", "Last Triggered"],
                 hide_index=True,
                 use_container_width=True
             )

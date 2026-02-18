@@ -85,18 +85,31 @@ CREATE TABLE alerts (
     alert_id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT,
     stock_id INT,
-    alert_type VARCHAR(30),
-    trigger_value DECIMAL(10,2),
-    is_active BOOLEAN DEFAULT TRUE,
+    portfolio_id INT,
+    metric VARCHAR(50) NOT NULL,
+    operator VARCHAR(10) NOT NULL,
+    threshold DECIMAL(10,2) NOT NULL,
+    is_active TINYINT(1) DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
     CONSTRAINT fk_alert_user
         FOREIGN KEY (user_id)
         REFERENCES users(user_id)
         ON DELETE CASCADE,
+    
     CONSTRAINT fk_alert_stock
         FOREIGN KEY (stock_id)
         REFERENCES stocks(stock_id)
-        ON DELETE CASCADE
+        ON DELETE CASCADE,
+    
+    CONSTRAINT fk_alert_portfolio
+        FOREIGN KEY (portfolio_id)
+        REFERENCES portfolio(portfolio_id)
+        ON DELETE CASCADE,
+    
+    INDEX idx_user_alerts (user_id),
+    INDEX idx_stock_alerts (stock_id),
+    INDEX idx_active_alerts (is_active)
 );
 
 CREATE TABLE alert_event (

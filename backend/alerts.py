@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from backend.auth import get_current_user
 from backend.database import get_db
+from backend.alert_checker import AlertChecker, check_alerts_now
 import mysql.connector
 from datetime import datetime
 
@@ -293,3 +294,25 @@ async def get_alert_summary(current_user: dict = Depends(get_current_user)):
     finally:
         cursor.close()
         db.close()
+
+@router.post("/check")
+async def check_alerts(current_user: dict = Depends(get_current_user)):
+    """Manually trigger alert checking for all active alerts."""
+    try:
+        results = check_alerts_now()
+        return {
+            "message": "Alert check completed",
+            "results": results
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error checking alerts: {str(e)}")
+
+@router.get("/notifications")
+async def get_notifications(current_user: dict = Depends(get_current_user), limit: int = 20):
+    """Get recent alert notifications for the current user."""
+    checker = AlertChecker()
+    try:
+        notifications = checker.get_user_triggered_alerts(current_user["user_id"], limit)
+        return notifications
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting notifications: {str(e)}")
