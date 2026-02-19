@@ -208,6 +208,40 @@ async def delete_portfolio(portfolio_id: int, current_user: dict = Depends(get_c
         cursor.close()
         db.close()
 
+@router.put("/{portfolio_id}/holdings/{holding_id}")
+async def update_holding(portfolio_id: int, holding_id: int, holding: HoldingCreate, current_user: dict = Depends(get_current_user)):
+    """Update a specific holding in a portfolio."""
+    db = get_db()
+    cursor = db.cursor()
+    
+    try:
+        cursor.execute("""
+            SELECT ph.holding_id 
+            FROM portfolio_holdings ph
+            JOIN portfolio p ON ph.portfolio_id = p.portfolio_id
+            WHERE ph.holding_id = %s AND ph.portfolio_id = %s AND p.user_id = %s
+        """, (holding_id, portfolio_id, current_user["user_id"]))
+        
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Holding not found")
+        
+        # Update the holding
+        cursor.execute("""
+            UPDATE portfolio_holdings 
+            SET quantity = %s, avg_price = %s, updated_at = NOW()
+            WHERE holding_id = %s
+        """, (holding.quantity, holding.avg_price, holding_id))
+        
+        db.commit()
+        
+        return {"message": "Holding updated successfully"}
+        
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        cursor.close()
+        db.close()
+
 @router.delete("/{portfolio_id}/holdings/{holding_id}")
 async def delete_holding(portfolio_id: int, holding_id: int, current_user: dict = Depends(get_current_user)):
     """Delete a specific holding from a portfolio."""
@@ -229,6 +263,69 @@ async def delete_holding(portfolio_id: int, holding_id: int, current_user: dict 
         db.commit()
         
         return {"message": "Holding deleted successfully"}
+        
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        cursor.close()
+        db.close()
+@router.put("/{portfolio_id}/holdings/{holding_id}")
+async def update_holding(portfolio_id: int, holding_id: int, holding: HoldingCreate, current_user: dict = Depends(get_current_user)):
+    """Update a specific holding in a portfolio."""
+    db = get_db()
+    cursor = db.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT ph.holding_id
+            FROM portfolio_holdings ph
+            JOIN portfolio p ON ph.portfolio_id = p.portfolio_id
+            WHERE ph.holding_id = %s AND ph.portfolio_id = %s AND p.user_id = %s
+        """, (holding_id, portfolio_id, current_user["user_id"]))
+
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Holding not found")
+
+        cursor.execute("""
+            UPDATE portfolio_holdings
+            SET quantity = %s, avg_price = %s, updated_at = NOW()
+            WHERE holding_id = %s
+        """, (holding.quantity, holding.avg_price, holding_id))
+
+        db.commit()
+
+        return {"message": "Holding updated successfully"}
+
+    except mysql.connector.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        cursor.close()
+        db.close()
+
+
+@router.get("/stocks/search")
+async def search_stock_by_symbol(symbol: str, current_user: dict = Depends(get_current_user)):
+    """Search for a stock by symbol for adding to portfolio."""
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    
+    try:
+        cursor.execute("""
+            SELECT 
+                s.stock_id, 
+                s.symbol, 
+                s.company_name,
+                f.current_price
+            FROM stocks s
+            LEFT JOIN fundamentals f ON s.stock_id = f.stock_id
+            WHERE s.symbol = %s
+        """, (symbol.upper(),))
+        
+        stock = cursor.fetchone()
+        if stock:
+            return stock
+        else:
+            raise HTTPException(status_code=404, detail=f"Stock symbol '{symbol}' not found")
         
     except mysql.connector.Error as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

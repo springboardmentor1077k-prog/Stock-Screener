@@ -507,47 +507,225 @@ else:
                             st.error(message)
                     else:
                         st.error("Please enter a portfolio name")
+        def add_holding(portfolio_id, stock_id, quantity, avg_price):
+            """Add a holding to portfolio."""
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                response = requests.post(f"{API_URL}/portfolio/{portfolio_id}/holdings",
+                                       json={"stock_id": stock_id, "quantity": quantity, "avg_price": avg_price},
+                                       headers=headers)
+                if response.status_code == 200:
+                    return True, "Holding added successfully"
+                else:
+                    return False, "Failed to add holding"
+            except Exception as e:
+                return False, f"Error: {str(e)}"
+        
+        def update_holding(portfolio_id, holding_id, stock_id, quantity, avg_price):
+            """Update a holding in portfolio."""
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                response = requests.put(f"{API_URL}/portfolio/{portfolio_id}/holdings/{holding_id}",
+                                       json={"stock_id": stock_id, "quantity": quantity, "avg_price": avg_price},
+                                       headers=headers)
+                if response.status_code == 200:
+                    return True, "Holding updated successfully"
+                else:
+                    return False, "Failed to update holding"
+            except Exception as e:
+                return False, f"Error: {str(e)}"
+        
+        def delete_holding(portfolio_id, holding_id):
+            """Delete a holding from portfolio."""
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                response = requests.delete(f"{API_URL}/portfolio/{portfolio_id}/holdings/{holding_id}",
+                                         headers=headers)
+                if response.status_code == 200:
+                    return True, "Holding deleted successfully"
+                else:
+                    return False, "Failed to delete holding"
+            except Exception as e:
+                return False, f"Error: {str(e)}"
+        
+        def delete_portfolio(portfolio_id):
+            """Delete a portfolio."""
+            try:
+                headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                response = requests.delete(f"{API_URL}/portfolio/{portfolio_id}", headers=headers)
+                if response.status_code == 200:
+                    return True, "Portfolio deleted successfully"
+                else:
+                    return False, "Failed to delete portfolio"
+            except Exception as e:
+                return False, f"Error: {str(e)}"
+        
         success, portfolios = get_portfolios()
         if success and portfolios:
             st.subheader("Your Portfolios")
             
             for portfolio in portfolios:
                 with st.expander(f"📁 {portfolio['name']} ({portfolio['total_holdings']} holdings - ${portfolio['total_value']:,.2f})"):
+                    
+                    # Add holding form
+                    st.write("➕ Add New Holding")
+                    
+                    # Step 1: Search for stock
+                    col_search1, col_search2 = st.columns([3, 1])
+                    with col_search1:
+                        search_symbol = st.text_input("Search Stock Symbol", key=f"search_{portfolio['portfolio_id']}", placeholder="e.g., AAPL, MSFT, GOOGL")
+                    with col_search2:
+                        st.write("")
+                        st.write("")
+                        search_btn = st.button("Search", key=f"search_btn_{portfolio['portfolio_id']}", use_container_width=True)
+                    
+                    # Store searched stock in session state
+                    if search_btn and search_symbol.strip():
+                        try:
+                            headers = {"Authorization": f"Bearer {st.session_state.token}"}
+                            response = requests.get(f"{API_URL}/portfolio/stocks/search",
+                                                   params={"symbol": search_symbol.upper().strip()},
+                                                   headers=headers)
+                            if response.status_code == 200:
+                                stock = response.json()
+                                st.session_state[f"found_stock_{portfolio['portfolio_id']}"] = stock
+                                st.success(f"✅ Found: {stock['symbol']} - {stock['company_name']}")
+                            else:
+                                st.error(f"Stock symbol '{search_symbol.upper()}' not found in database")
+                                st.session_state[f"found_stock_{portfolio['portfolio_id']}"] = None
+                        except Exception as e:
+                            st.error(f"Error: {str(e)}")
+                            st.session_state[f"found_stock_{portfolio['portfolio_id']}"] = None
+                    
+                    # Step 2: Add holding form (shown only if stock is found)
+                    found_stock = st.session_state.get(f"found_stock_{portfolio['portfolio_id']}")
+                    if found_stock:
+                        with st.form(f"add_holding_{portfolio['portfolio_id']}"):
+                            st.write(f"**{found_stock['symbol']} - {found_stock['company_name']}**")
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                quantity = st.number_input("Quantity", min_value=1, value=1, key=f"qty_{portfolio['portfolio_id']}")
+                            with col2:
+                                current_price = found_stock.get('current_price')
+                                default_price = float(current_price) if current_price else 100.00
+                                avg_price = st.number_input("Purchase Price", min_value=0.01, value=default_price, step=0.01, key=f"price_{portfolio['portfolio_id']}")
+                                if current_price:
+                                    st.caption(f"Current market price: ${current_price:.2f}")
+                            with col3:
+                                st.write("")
+                                st.write("")
+                                add_btn = st.form_submit_button("Add to Portfolio", use_container_width=True, type="primary")
+                            
+                            if add_btn:
+                                success, message = add_holding(portfolio['portfolio_id'], found_stock['stock_id'], quantity, avg_price)
+                                if success:
+                                    st.success(message)
+                                    # Clear the found stock
+                                    st.session_state[f"found_stock_{portfolio['portfolio_id']}"] = None
+                                    st.rerun()
+                                else:
+                                    st.error(message)
+                    
+                    st.divider()
+
+                    # Display holdings
                     holdings_success, holdings = get_portfolio_holdings(portfolio['portfolio_id'])                    
                     if holdings_success and holdings:
-                        holdings_df = pd.DataFrame(holdings)
-                        display_columns = ['symbol', 'company_name', 'quantity', 'avg_price', 'current_price', 'total_value', 'gain_loss', 'gain_loss_percent']
-                        available_holdings_columns = [col for col in display_columns if col in holdings_df.columns]
-                        if available_holdings_columns:
-                            holdings_display = holdings_df[available_holdings_columns].copy()
-                            column_mapping = {
-                                'symbol': 'Symbol',
-                                'company_name': 'Company',
-                                'quantity': 'Qty',
-                                'avg_price': 'Avg Price',
-                                'current_price': 'Current Price',
-                                'total_value': 'Total Value',
-                                'gain_loss': 'Gain/Loss',
-                                'gain_loss_percent': 'Gain/Loss %'
-                            }
+                        st.write("📊 Holdings")
+                        
+                        for holding in holdings:
+                            col1, col2, col3, col4, col5, col6 = st.columns([2, 1, 1, 1, 1, 1])
                             
-                            holdings_display = holdings_display.rename(columns={k: v for k, v in column_mapping.items() if k in holdings_display.columns})                            
-                            if 'Avg Price' in holdings_display.columns:
-                                holdings_display['Avg Price'] = holdings_display['Avg Price'].apply(lambda x: f"${x:.2f}" if pd.notnull(x) else "N/A")
-                            if 'Current Price' in holdings_display.columns:
-                                holdings_display['Current Price'] = holdings_display['Current Price'].apply(lambda x: f"${x:.2f}" if pd.notnull(x) else "N/A")
-                            if 'Total Value' in holdings_display.columns:
-                                holdings_display['Total Value'] = holdings_display['Total Value'].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else "N/A")
-                            if 'Gain/Loss' in holdings_display.columns:
-                                holdings_display['Gain/Loss'] = holdings_display['Gain/Loss'].apply(lambda x: f"${x:+,.2f}" if pd.notnull(x) else "N/A")
-                            if 'Gain/Loss %' in holdings_display.columns:
-                                holdings_display['Gain/Loss %'] = holdings_display['Gain/Loss %'].apply(lambda x: f"{x:+.1f}%" if pd.notnull(x) else "N/A")
+                            with col1:
+                                st.write(f"**{holding['symbol']}**")
+                                st.caption(holding['company_name'][:30] + "..." if len(holding['company_name']) > 30 else holding['company_name'])
                             
-                            st.dataframe(holdings_display )
-                        else:
-                            st.info("No holdings data available")
+                            with col2:
+                                st.metric("Qty", holding['quantity'])
+                            
+                            with col3:
+                                st.metric("Avg Price", f"${holding['avg_price']:.2f}")
+                            
+                            with col4:
+                                current = holding.get('current_price')
+                                st.metric("Current", f"${current:.2f}" if current else "N/A")
+                            
+                            with col5:
+                                gain_loss = holding.get('gain_loss')
+                                gain_loss_pct = holding.get('gain_loss_percent')
+                                if gain_loss is not None and gain_loss_pct is not None:
+                                    st.metric("Gain/Loss", f"${gain_loss:+,.2f}", delta=f"{gain_loss_pct:+.1f}%")
+                                else:
+                                    st.metric("Gain/Loss", "N/A")
+                            
+                            with col6:
+                                # Edit/Delete buttons
+                                edit_key = f"edit_{holding['holding_id']}"
+                                delete_key = f"delete_{holding['holding_id']}"
+                                
+                                if st.button("✏️", key=edit_key, help="Edit holding"):
+                                    st.session_state[f"editing_{holding['holding_id']}"] = True
+                                    st.rerun()
+                                
+                                if st.button("🗑️", key=delete_key, help="Delete holding"):
+                                    success, message = delete_holding(portfolio['portfolio_id'], holding['holding_id'])
+                                    if success:
+                                        st.success(message)
+                                        st.rerun()
+                                    else:
+                                        st.error(message)
+                            
+                            # Edit form (shown when edit button is clicked)
+                            if st.session_state.get(f"editing_{holding['holding_id']}", False):
+                                with st.form(f"edit_form_{holding['holding_id']}"):
+                                    st.write(f"Edit {holding['symbol']}")
+                                    col_a, col_b, col_c = st.columns(3)
+                                    with col_a:
+                                        new_qty = st.number_input("New Quantity", min_value=1, value=holding['quantity'], key=f"edit_qty_{holding['holding_id']}")
+                                    with col_b:
+                                        new_price = st.number_input("New Avg Price", min_value=0.01, value=float(holding['avg_price']), step=0.01, key=f"edit_price_{holding['holding_id']}")
+                                    with col_c:
+                                        st.write("")
+                                        st.write("")
+                                        col_save, col_cancel = st.columns(2)
+                                        with col_save:
+                                            save_btn = st.form_submit_button("Save", use_container_width=True)
+                                        with col_cancel:
+                                            cancel_btn = st.form_submit_button("Cancel", use_container_width=True)
+                                    
+                                    if save_btn:
+                                        success, message = update_holding(portfolio['portfolio_id'], holding['holding_id'], holding['stock_id'], new_qty, new_price)
+                                        if success:
+                                            st.session_state[f"editing_{holding['holding_id']}"] = False
+                                            st.success(message)
+                                            st.rerun()
+                                        else:
+                                            st.error(message)
+                                    
+                                    if cancel_btn:
+                                        st.session_state[f"editing_{holding['holding_id']}"] = False
+                                        st.rerun()
+                            
+                            st.divider()
                     else:
-                        st.info("No holdings in this portfolio")
+                        st.info("No holdings in this portfolio. Add your first holding above!")
+                    
+                    # Delete portfolio button
+                    st.write("")
+                    if st.button(f"🗑️ Delete Portfolio '{portfolio['name']}'", key=f"del_port_{portfolio['portfolio_id']}", type="secondary"):
+                        if st.session_state.get(f"confirm_delete_{portfolio['portfolio_id']}", False):
+                            success, message = delete_portfolio(portfolio['portfolio_id'])
+                            if success:
+                                st.success(message)
+                                st.session_state[f"confirm_delete_{portfolio['portfolio_id']}"] = False
+                                st.rerun()
+                            else:
+                                st.error(message)
+                        else:
+                            st.session_state[f"confirm_delete_{portfolio['portfolio_id']}"] = True
+                            st.warning("⚠️ Click again to confirm deletion. This will delete all holdings!")
+                            st.rerun()
         else:
             st.info("No portfolios found. Create your first portfolio above!")
 

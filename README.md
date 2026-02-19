@@ -36,10 +36,14 @@ AI Stock Screener is a comprehensive stock analysis platform that combines the p
 
 ### 2. Portfolio Management
 - **Multiple Portfolios**: Create and manage unlimited portfolios
+- **Add Holdings**: Search stocks by symbol and add to portfolio with auto-filled current price
+- **Edit Holdings**: Update quantity and purchase price for any holding
+- **Delete Holdings**: Remove individual holdings from portfolios
 - **Holdings Tracking**: Track quantity, average price, and current value
 - **Gain/Loss Analysis**: Real-time profit/loss calculations with percentage changes
 - **Portfolio Summary**: Overview of total invested amount and current value
 - **Stock-Level Details**: Detailed breakdown of each holding's performance
+- **Portfolio Deletion**: Delete entire portfolios with confirmation
 
 ### 3. Intelligent Price Alerts
 - **Multi-Metric Monitoring**: Track price, PE ratio, market cap, EPS, ROE, dividend yield
@@ -285,9 +289,16 @@ The application will open in your browser at `http://localhost:8501`
 ### Portfolio Management
 
 1. **Create Portfolio**: Click "Create New Portfolio" and enter a name
-2. **Add Holdings**: (Holdings can be added via API or database)
-3. **View Performance**: See real-time gain/loss for each holding
-4. **Track Summary**: Monitor total invested vs current value
+2. **Add Holdings**:
+   - Enter stock symbol (e.g., AAPL, MSFT, GOOGL) and click "Search"
+   - System fetches stock details and current market price from database
+   - Enter quantity and purchase price (auto-filled with current price)
+   - Click "Add to Portfolio"
+3. **Edit Holdings**: Click ✏️ button next to any holding to update quantity or price
+4. **Delete Holdings**: Click 🗑️ button to remove a holding from portfolio
+5. **View Performance**: See real-time gain/loss for each holding with percentage changes
+6. **Track Summary**: Monitor total invested vs current value across all portfolios
+7. **Delete Portfolio**: Click "Delete Portfolio" button with confirmation to remove entire portfolio
 
 ### Setting Up Alerts
 
@@ -357,6 +368,47 @@ Create new portfolio
 
 #### GET `/portfolio/{portfolio_id}/holdings`
 Get holdings for a specific portfolio
+
+#### POST `/portfolio/{portfolio_id}/holdings`
+Add a new holding to portfolio
+```json
+{
+  "stock_id": 1,
+  "quantity": 10,
+  "avg_price": 150.50
+}
+```
+
+#### PUT `/portfolio/{portfolio_id}/holdings/{holding_id}`
+Update an existing holding
+```json
+{
+  "stock_id": 1,
+  "quantity": 15,
+  "avg_price": 145.00
+}
+```
+
+#### DELETE `/portfolio/{portfolio_id}/holdings/{holding_id}`
+Delete a holding from portfolio
+
+#### DELETE `/portfolio/{portfolio_id}`
+Delete a portfolio and all its holdings
+
+#### GET `/portfolio/stocks/search`
+Search for a stock by symbol
+```
+Query Parameter: symbol="AAPL"
+Headers: Authorization: Bearer <token>
+
+Response:
+{
+  "stock_id": 1,
+  "symbol": "AAPL",
+  "company_name": "Apple Inc.",
+  "current_price": 175.50
+}
+```
 
 #### GET `/portfolio/summary`
 Get portfolio summary statistics
@@ -587,6 +639,60 @@ For issues, questions, or suggestions:
 - Open an issue on GitHub
 - Contact the development team
 - Check documentation in `REDIS_SETUP.md` for caching issues
+
+## 🔧 Troubleshooting
+
+### Portfolio Management Issues
+
+**Problem**: "Stock symbol 'AAPL' not found in database"
+
+**Solutions**:
+1. Check if stocks are in database:
+   ```bash
+   python check_stocks.py
+   ```
+
+2. If no stocks found, run data ingestion:
+   ```bash
+   cd ingestion
+   python run_all.py
+   ```
+
+3. Restart backend server after adding new endpoints:
+   ```bash
+   # Stop current server (Ctrl+C)
+   uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload
+   ```
+
+**Problem**: Holdings not showing current price
+
+**Solution**: Run fundamentals ingestion to populate current prices:
+```bash
+cd ingestion
+python ingest_fundamentals.py
+```
+
+**Problem**: Cannot add holdings - 404 error
+
+**Solution**: 
+1. Ensure backend server is running
+2. Check API URL in `.env` file: `API_URL=http://127.0.0.1:8001`
+3. Restart backend server to register new routes
+
+### Alert System Issues
+
+**Problem**: Alerts not triggering
+
+**Solution**: 
+1. Manually check alerts: Click "🔄 Check Alerts Now" button
+2. Verify stock has current price in fundamentals table
+3. Check alert conditions are correct
+
+### Cache Issues
+
+**Problem**: Redis connection failed
+
+**Solution**: This is normal if Redis isn't installed. The application works fine without it. See [REDIS_SETUP.md](REDIS_SETUP.md) for installation.
 
 ## 🙏 Acknowledgments
 
