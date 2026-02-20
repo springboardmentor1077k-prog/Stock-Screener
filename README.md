@@ -238,7 +238,7 @@ Edit these files to customize:
 DATABASE_CONFIG = {
     "dbname": "stock_screener",
     "user": "postgres",
-    "password": "arya",
+    "password": "aarya",
     "host": "localhost",
     "port": "5434"
 }
