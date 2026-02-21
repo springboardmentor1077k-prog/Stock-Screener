@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+psycopg2-binary
+python-dotenv
+google-generativeai
+pydantic
+streamlit
+requests
+python-multipart
+PyJWT
+yfinance
+pandas
+openai
+groq
