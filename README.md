@@ -57,23 +57,39 @@ The project follows a modular full-stack architecture:
 ## 📂 Project Structure
 
 AI_stocklens/
+
 │
+
 ├── backend/
 
 │   ├── api_server.py
+
 │   ├── nlp/
+
 │   └── data/
+
 │
+
 ├── dashboard/
+
 │   ├── main.py
+
 │   ├── services/
+
 │   ├── views/
+
 │   └── assets/
+
 │
+
 ├── tests/
+
 │   ├── auth_smoke.py
+
 │   └── smoke_backend.py
+
 │
+
 └─ json_output_code.py
 
 ---
