@@ -31,8 +31,8 @@ Make sure you have the following installed on your machine:
 ### 2. Installation
 Clone the repository and navigate into the project directory:
 ```bash
-git clone [https://github.com/yourusername/ai-stock-screener.git](https://github.com/yourusername/ai-stock-screener.git)
-cd ai-stock-screener
+git clone -b Abinav_S https://github.com/springboardmentor1077k-prog/Stock-Screener.git
+cd Stock-Screener
 
 ```
 
@@ -50,7 +50,7 @@ source venv/bin/activate
 Install the required dependencies:
 
 ```bash
-pip install -r backend/requirements.txt
+pip install -r requirements.txt
 
 ```
 
@@ -60,9 +60,16 @@ pip install -r backend/requirements.txt
 2. Create a `.env` file in the root directory and add your secret keys:
 
 ```env
-DATABASE_URL=postgresql://postgres:yourpassword@localhost/stock_screener_db1
 SECRET_KEY=your_super_secret_jwt_key
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
 
+# Database
+DATABASE_URL="postgresql://postgres:password@localhost/stock_screener_db1"
+
+# AI Service
+OPENAI_API_KEY= api-key
+OPENAI_BASE_URL=openai-base-url
 ```
 
 3. Run the initial data ingestion to populate the database:
@@ -93,22 +100,3 @@ streamlit run app.py
 
 Open your browser and navigate to `http://localhost:8501` to use the application. Log in with your admin credentials to get started!
 
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome! Feel free to check the issues page.
-
-```
-
-***
-
-### **What to do next**
-Make sure to replace `https://github.com/yourusername/ai-stock-screener.git` in the installation step with your actual GitHub link! 
-
-Would you like to move on to setting up the **Background Scheduler** now so your database updates live market prices automatically?
-
-If you want to style your documentation further, checking out this [comprehensive Markdown crash course](https://www.youtube.com/watch?v=_PPWWRV6gbA) is a great way to learn advanced formatting tricks that make GitHub repositories stand out.
-
-
-http://googleusercontent.com/youtube_content/0
-
-```
