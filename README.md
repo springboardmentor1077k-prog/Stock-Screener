@@ -1,4 +1,3 @@
-```markdown
 # 📈 AI Stock Screener
 
 An intelligent, full-stack stock screening and portfolio management dashboard built with FastAPI and Streamlit. 
