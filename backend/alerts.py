@@ -1,20 +1,18 @@
 from datetime import datetime
 from database import get_connection, get_screening_data
 from parser import parse_query_to_dsl
+from screener import build_where_clause
 
 
-# -------------------------------------
-# ALERT EVALUATION
-# -------------------------------------
 def evaluate_alerts(username: str):
 
     conn = get_connection()
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT alert_id, query
+        SELECT id, query
         FROM alerts
-        WHERE username = ? AND is_active = 1
+        WHERE user_id = ?
     """, (username,))
     alerts = cur.fetchall()
 
@@ -22,53 +20,63 @@ def evaluate_alerts(username: str):
 
     for alert_id, query in alerts:
 
-        dsl = parse_query_to_dsl(query)
-        stocks = get_screening_data(dsl)
+        try:
+            dsl = parse_query_to_dsl(query)
+            where_clause = build_where_clause(dsl)
+            stocks = get_screening_data(where_clause)
+        except Exception:
+            continue
 
         for stock in stocks:
 
-            symbol = stock.get("symbol")
+            stock_id = stock.get("stock_id")
 
-            # Check already triggered
             cur.execute("""
                 SELECT 1 FROM alert_triggers
-                WHERE alert_id = ? AND symbol = ?
-            """, (alert_id, symbol))
+                WHERE alert_id = ? AND stock_id = ?
+            """, (alert_id, stock_id))
 
             if cur.fetchone():
                 continue
 
-            current_price = stock.get("current_price")
-            target_price = stock.get("target_price")
-            recommendation = stock.get("recommendation")
+            pe = stock.get("pe_ratio")
+            profit = stock.get("profit")
 
-            upside_percent = None
-            if current_price and target_price:
-                upside_percent = round(
-                    ((target_price - current_price) / current_price) * 100, 2
-                )
+            if pe is not None and profit is not None:
+                if pe < 15 and profit > 20000:
+                    signal = "BUY"
+                    reason = "Low PE with strong profit growth"
+                elif pe < 20:
+                    signal = "WATCH"
+                    reason = "Moderate valuation level"
+                else:
+                    signal = "RISK"
+                    reason = "High PE valuation zone"
+            else:
+                signal = "WATCH"
+                reason = "General market condition"
 
-            # Insert trigger
             cur.execute("""
                 INSERT INTO alert_triggers (
                     alert_id,
-                    symbol,
+                    stock_id,
                     triggered_at
                 )
                 VALUES (?, ?, ?)
             """, (
                 alert_id,
-                symbol,
+                stock_id,
                 datetime.utcnow().isoformat()
             ))
 
             triggered_results.append({
                 "alert_id": alert_id,
-                "symbol": symbol,
-                "current_price": current_price,
-                "target_price": target_price,
-                "upside_percent": upside_percent,
-                "recommendation": recommendation
+                "stock_id": stock_id,
+                "symbol": stock.get("symbol"),
+                "current_price": stock.get("close_price"),
+                "signal": signal,
+                "reason": reason,
+                "triggered_at": datetime.utcnow().isoformat()
             })
 
     conn.commit()
@@ -77,24 +85,21 @@ def evaluate_alerts(username: str):
     return triggered_results
 
 
-# -------------------------------------
-# ALERT STATUS
-# -------------------------------------
 def list_alert_status(username: str):
 
     conn = get_connection()
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT alert_id, query, is_active
+        SELECT id, query
         FROM alerts
-        WHERE username = ?
+        WHERE user_id = ?
     """, (username,))
     alerts = cur.fetchall()
 
     results = []
 
-    for alert_id, query, is_active in alerts:
+    for alert_id, query in alerts:
 
         cur.execute("""
             SELECT COUNT(*) FROM alert_triggers
@@ -105,8 +110,7 @@ def list_alert_status(username: str):
         results.append({
             "alert_id": alert_id,
             "query": query,
-            "status": "TRIGGERED" if triggered_count > 0 else "NOT_TRIGGERED",
-            "is_active": bool(is_active)
+            "status": "TRIGGERED" if triggered_count > 0 else "NOT_TRIGGERED"
         })
 
     conn.close()

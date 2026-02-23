@@ -1,14 +1,17 @@
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from datetime import datetime
 import uuid
+import redis
+import json
+import hashlib
 
-# -----------------------------------------
-# EXISTING IMPORTS (UNCHANGED)
-# -----------------------------------------
 from parser import parse_query_to_dsl
 from validator import validate_dsl
 from screener import build_where_clause
+from alerts import evaluate_alerts, list_alert_status
+
 from database import (
     get_screening_data,
     get_connection,
@@ -17,60 +20,41 @@ from database import (
     simulate_market_prices
 )
 
-# -----------------------------------------
-# REDIS IMPORTS (SAFE OPTIONAL MODE)
-# -----------------------------------------
-import redis
-import json
-import hashlib
+app = FastAPI(title="AI Stock Explorer")
 
-# -------------------------------------------------
-# APP INIT
-# -------------------------------------------------
-app = FastAPI(title="AI Stock Screener")
-
-# -------------------------------------------------
-# REDIS SAFE CONNECTION (NO CRASH IF OFF)
-# -------------------------------------------------
 try:
-    redis_client = redis.Redis(
-        host="localhost",
-        port=6379,
-        decode_responses=True
-    )
+    redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
     redis_client.ping()
     REDIS_AVAILABLE = True
-    print("✅ Redis connected")
 except Exception:
     REDIS_AVAILABLE = False
-    print("⚠️ Redis not available — running in SAFE MODE")
 
-# -------------------------------------------------
-# SIMPLE AUTH (IN-MEMORY – DEMO SAFE)
-# -------------------------------------------------
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print(f"System error: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error_code": "SYSTEM_ERROR",
+            "message": "Temporary system issue. Please try again later."
+        }
+    )
+
+
 users_db = {}
 token_store = {}
 
-# -------------------------------------------------
-# REQUEST MODELS
-# -------------------------------------------------
 class RegisterRequest(BaseModel):
     username: str
     password: str
-
 
 class LoginRequest(BaseModel):
     username: str
     password: str
 
-
 class ScreenRequest(BaseModel):
     query: str
-
-
-class AlertCreateRequest(BaseModel):
-    query: str
-
 
 class AddHoldingRequest(BaseModel):
     portfolio_id: int
@@ -78,10 +62,25 @@ class AddHoldingRequest(BaseModel):
     quantity: int
     buy_price: float
 
+class AlertRequest(BaseModel):
+    query: str
 
-# -------------------------------------------------
-# AUTH ROUTES
-# -------------------------------------------------
+
+def require_auth(token: str):
+    if token not in token_store:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return token_store[token]
+
+
+def safe_redis_get(key):
+    if not REDIS_AVAILABLE:
+        return None
+    try:
+        return redis_client.get(key)
+    except Exception:
+        return None
+
+
 @app.post("/register")
 def register(data: RegisterRequest):
     users_db[data.username] = data.password
@@ -98,59 +97,35 @@ def login(data: LoginRequest):
     return {"token": token}
 
 
-def require_auth(token: str):
-    if token not in token_store:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    return token_store[token]
-
-
-# -------------------------------------------------
-# SCREENER (SAFE OPTIONAL REDIS CACHE)
-# -------------------------------------------------
 @app.post("/screen")
 def screen(data: ScreenRequest, token: str = Header(None)):
     require_auth(token)
 
-    try:
-        dsl = parse_query_to_dsl(data.query)
-        validate_dsl(dsl)
-        where_clause = build_where_clause(dsl)
+    dsl = parse_query_to_dsl(data.query)
+    validate_dsl(dsl)
+    where_clause = build_where_clause(dsl)
 
-        results = None
+    results = None
 
-        # ----------------------------------
-        # USE REDIS ONLY IF AVAILABLE
-        # ----------------------------------
-        if REDIS_AVAILABLE:
-            try:
-                raw_key = f"screen:{where_clause}"
-                cache_key = hashlib.md5(raw_key.encode()).hexdigest()
+    if REDIS_AVAILABLE:
+        raw_key = f"screen:{where_clause}"
+        cache_key = hashlib.md5(raw_key.encode()).hexdigest()
 
-                cached = redis_client.get(cache_key)
-
-                if cached:
-                    print("✅ CACHE HIT")
-                    results = json.loads(cached)
-                else:
-                    print("❌ CACHE MISS")
-                    results = get_screening_data(where_clause)
-                    redis_client.setex(cache_key, 60, json.dumps(results))
-            except Exception:
-                print("⚠️ Redis error — fallback to DB")
-                results = get_screening_data(where_clause)
+        cached = safe_redis_get(cache_key)
+        if cached:
+            results = json.loads(cached)
         else:
-            print("⚠️ SAFE MODE (Redis OFF)")
             results = get_screening_data(where_clause)
+            redis_client.setex(cache_key, 60, json.dumps(results))
+    else:
+        results = get_screening_data(where_clause)
 
-        return {"count": len(results), "data": results}
+    if not results:
+        return {"count": 0, "data": [], "message": "No matching results"}
 
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return {"count": len(results), "data": results}
 
 
-# -------------------------------------------------
-# PORTFOLIO
-# -------------------------------------------------
 @app.post("/portfolio/create")
 def create_portfolio(token: str = Header(None)):
     user_id = require_auth(token)
@@ -162,11 +137,12 @@ def create_portfolio(token: str = Header(None)):
         "INSERT INTO portfolio (user_id, created_at) VALUES (?, ?)",
         (user_id, datetime.now().isoformat())
     )
+
     conn.commit()
-    portfolio_id = cur.lastrowid
+    pid = cur.lastrowid
     conn.close()
 
-    return {"portfolio_id": portfolio_id}
+    return {"portfolio_id": pid}
 
 
 @app.post("/portfolio/add")
@@ -191,7 +167,7 @@ def add_to_portfolio(data: AddHoldingRequest, token: str = Header(None)):
     conn.commit()
     conn.close()
 
-    return {"message": "Stock added to portfolio"}
+    return {"message": "added"}
 
 
 @app.get("/portfolio/{portfolio_id}")
@@ -204,79 +180,16 @@ def view_portfolio(portfolio_id: int, token: str = Header(None)):
 def sell_stock(holding_id: int, token: str = Header(None)):
     require_auth(token)
     sell_holding(holding_id)
-    return {"message": "Stock sold"}
+    return {"message": "sold"}
 
 
-# -------------------------------------------------
-# ALERTS (UNCHANGED)
-# -------------------------------------------------
-@app.post("/alerts/create")
-def create_alert(data: AlertCreateRequest, token: str = Header(None)):
-    user_id = require_auth(token)
-
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        INSERT INTO alerts (user_id, query, created_at)
-        VALUES (?, ?, ?)
-    """, (user_id, data.query, datetime.now().isoformat()))
-
-    conn.commit()
-    conn.close()
-
-    return {"message": "Alert created"}
-
-
-@app.get("/alerts/check")
-def check_alerts(token: str = Header(None)):
-    user_id = require_auth(token)
-
-    conn = get_connection()
-    cur = conn.cursor()
-
-    triggered = []
-
-    cur.execute("SELECT id, query FROM alerts WHERE user_id = ?", (user_id,))
-    alerts = cur.fetchall()
-
-    for alert_id, query in alerts:
-        try:
-            dsl = parse_query_to_dsl(query)
-            where_clause = build_where_clause(dsl)
-            stocks = get_screening_data(where_clause)
-
-            for s in stocks:
-                cur.execute("""
-                    INSERT OR IGNORE INTO alert_triggers
-                    (alert_id, stock_id, triggered_at)
-                    VALUES (?, ?, ?)
-                """, (alert_id, s["stock_id"], datetime.now().isoformat()))
-
-                if cur.rowcount > 0:
-                    triggered.append({
-                        "alert_id": alert_id,
-                        "symbol": s["symbol"],
-                        "company": s["company"],
-                        "triggered_at": datetime.now().isoformat()
-                    })
-
-        except Exception:
-            continue
-
-    conn.commit()
-    conn.close()
-
-    return {"triggered_alerts": triggered}
-
-
-# -------------------------------------------------
-# MARKET SIMULATION (CACHE CLEAR ONLY IF REDIS ON)
-# -------------------------------------------------
 @app.post("/simulate")
 def simulate_market(token: str = Header(None)):
-    require_auth(token)
+
+    user = require_auth(token)
+
     simulate_market_prices()
+    evaluate_alerts(user)
 
     if REDIS_AVAILABLE:
         try:
@@ -284,4 +197,39 @@ def simulate_market(token: str = Header(None)):
         except Exception:
             pass
 
-    return {"message": "Market prices updated"}
+    return {"message": "market updated"}
+
+
+@app.post("/alerts/create")
+def create_alert(data: AlertRequest, token: str = Header(None)):
+    username = require_auth(token)
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO alerts (user_id, query, created_at)
+        VALUES (?, ?, ?)
+    """, (
+        username,
+        data.query,
+        datetime.now().isoformat()
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return {"message": "alert created"}
+
+
+@app.get("/alerts/check")
+def check_alerts(token: str = Header(None)):
+    username = require_auth(token)
+    triggered = evaluate_alerts(username)
+    return {"triggered_alerts": triggered}
+
+
+@app.get("/alerts/status")
+def alerts_status(token: str = Header(None)):
+    username = require_auth(token)
+    return list_alert_status(username)

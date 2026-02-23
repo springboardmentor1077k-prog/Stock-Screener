@@ -3,23 +3,14 @@ import os
 import random
 from datetime import date, timedelta, datetime
 
-# =========================================================
-# DATABASE PATH (SAFE & FIXED)
-# =========================================================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "stocks.db")
 
-# =========================================================
-# CONNECTION
-# =========================================================
 def get_connection():
     return sqlite3.connect(DB_PATH)
 
-# =========================================================
-# TABLE CREATION
-# =========================================================
 def create_tables():
     conn = get_connection()
     cur = conn.cursor()
@@ -94,9 +85,6 @@ def create_tables():
     conn.commit()
     conn.close()
 
-# =========================================================
-# SEED DATA (25 STOCKS, 4 QUARTERS)
-# =========================================================
 def seed_data():
     conn = get_connection()
     cur = conn.cursor()
@@ -136,7 +124,7 @@ def seed_data():
     cur.executemany("INSERT INTO masterstocks VALUES (?,?,?,?,?)", stocks)
 
     fundamentals = [
-        (s[0], round(random.uniform(8,30),2),
+        (s[0], round(random.uniform(12,25),2),
          random.randint(50000,500000),
          random.randint(1000,60000))
         for s in stocks
@@ -144,6 +132,7 @@ def seed_data():
     cur.executemany("INSERT INTO fundamentals VALUES (?,?,?,?)", fundamentals)
 
     today = date.today()
+
     for sid in range(1,26):
         for q in range(4):
             cur.execute("""
@@ -160,9 +149,36 @@ def seed_data():
     conn.commit()
     conn.close()
 
-# =========================================================
-# SNAPSHOT SCREENER (NO DUPLICATES)
-# =========================================================
+def ensure_quarter_rows():
+    conn = get_connection()
+    cur = conn.cursor()
+    today = date.today()
+
+    for sid in range(1,26):
+        cur.execute("""
+        SELECT COUNT(*)
+        FROM time_series_financials
+        WHERE stock_id = ?
+        """, (sid,))
+        count = cur.fetchone()[0]
+
+        if count < 4:
+            missing = 4 - count
+            for q in range(missing):
+                cur.execute("""
+                INSERT INTO time_series_financials
+                VALUES (?,?,?,?,?)
+                """, (
+                    sid,
+                    (today - timedelta(days=90*q)).isoformat(),
+                    random.randint(500,3500),
+                    random.randint(100000,2000000),
+                    random.randint(-5000,60000)
+                ))
+
+    conn.commit()
+    conn.close()
+
 def get_screening_data(where_clause=""):
     conn = get_connection()
     cur = conn.cursor()
@@ -198,9 +214,6 @@ def get_screening_data(where_clause=""):
     cols = ["stock_id","symbol","company","sector","pe_ratio","market_cap","profit","close_price"]
     return [dict(zip(cols, r)) for r in rows]
 
-# =========================================================
-# PORTFOLIO VIEW
-# =========================================================
 def get_portfolio_holdings(portfolio_id):
     conn = get_connection()
     cur = conn.cursor()
@@ -214,14 +227,14 @@ def get_portfolio_holdings(portfolio_id):
         ph.quantity,
         ph.buy_price,
         ph.buy_time,
-        t.close_price,
-        t.date
+        t.close_price
     FROM portfolio_holdings ph
     JOIN masterstocks m ON ph.stock_id = m.stock_id
     JOIN time_series_financials t
       ON t.stock_id = ph.stock_id
      AND t.date = (
-         SELECT MAX(date) FROM time_series_financials
+         SELECT MAX(date)
+         FROM time_series_financials
          WHERE stock_id = ph.stock_id
      )
     WHERE ph.portfolio_id = ?
@@ -232,9 +245,7 @@ def get_portfolio_holdings(portfolio_id):
 
     holdings = []
     for r in rows:
-        hid, sid, sym, comp, qty, buy, buy_time, curr, mtime = r
-        invested = buy * qty
-        current = curr * qty
+        hid, sid, sym, comp, qty, buy, buy_time, curr = r
         holdings.append({
             "holding_id": hid,
             "stock_id": sid,
@@ -243,17 +254,11 @@ def get_portfolio_holdings(portfolio_id):
             "quantity": qty,
             "buy_price": buy,
             "buy_time": buy_time,
-            "current_price": curr,
-            "last_market_update": mtime,
-            "invested_amount": round(invested,2),
-            "current_value": round(current,2),
-            "profit_loss": round(current-invested,2)
+            "current_price": curr
         })
+
     return holdings
 
-# =========================================================
-# SELL
-# =========================================================
 def sell_holding(holding_id):
     conn = get_connection()
     cur = conn.cursor()
@@ -261,9 +266,6 @@ def sell_holding(holding_id):
     conn.commit()
     conn.close()
 
-# =========================================================
-# MARKET SIMULATION
-# =========================================================
 def simulate_market_prices():
     conn = get_connection()
     cur = conn.cursor()
@@ -282,9 +284,7 @@ def simulate_market_prices():
     now = datetime.now().isoformat()
 
     for sid, price in rows:
-        change = random.uniform(-0.05, 0.05)
-        new_price = round(price * (1 + change), 2)
-
+        new_price = round(price * (1 + random.uniform(-0.05, 0.05)), 2)
         cur.execute("""
         INSERT INTO time_series_financials
         VALUES (?,?,?,?,?)
@@ -296,13 +296,16 @@ def simulate_market_prices():
             random.randint(-5000,60000)
         ))
 
+    cur.execute("SELECT stock_id, pe_ratio FROM fundamentals")
+    for sid, pe in cur.fetchall():
+        new_pe = max(1, round(pe * (1 + random.uniform(-0.15,0.15)), 2))
+        cur.execute("UPDATE fundamentals SET pe_ratio = ? WHERE stock_id = ?", (new_pe, sid))
+
     conn.commit()
     conn.close()
 
-# =========================================================
-# RUN ONCE
-# =========================================================
 if __name__ == "__main__":
     create_tables()
     seed_data()
-    print("✅ Database reset complete")
+    ensure_quarter_rows()
+    print("Database initialized")
