@@ -1,0 +1,18 @@
+# Web Frameworks
+fastapi
+uvicorn
+streamlit
+
+# Database
+psycopg2-binary
+faker
+
+# AI & Logic
+openai
+google-generativeai
+pandas
+python-dotenv
+
+# Visualization
+plotly
+requests
