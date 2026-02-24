@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+mysql-connector-python
+requests
+bcrypt
+pyjwt
+redis
+python-multipart

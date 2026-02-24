@@ -1,0 +1,17 @@
+{
+  "conditions": [
+    {
+      "field": "peRatio",
+      "operator": "<",
+      "value": 15,
+      "type": "snapshot"
+    },
+    {
+      "field": "netProfit",
+      "operator": ">",
+      "value": 0,
+      "type": "snapshot",
+      "last_n": 4
+    }
+  ]
+}
