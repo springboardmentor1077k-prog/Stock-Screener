@@ -2,7 +2,6 @@
 
 An intelligent, full-stack stock screening application that lets users query stock market data using **plain English**. The system uses a local LLM (via Ollama) to convert natural language queries into a structured DSL, which is compiled to SQL and executed against a MySQL database — all wrapped in a clean Streamlit UI with secure JWT authentication.
 
-> **Developed by Surabhi & Sohan — Springboard Internship Project**
 
 ---
 
