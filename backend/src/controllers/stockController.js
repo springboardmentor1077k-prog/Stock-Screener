@@ -1,4 +1,7 @@
 const pool = require("../db/db");
+const compileQuery = require("../services/queryCompiler");
+const validateDsl = require("../services/dslSchema");
+const { parseEnglishToRules } = require("../services/aiRuleParser");
 
 /**
  * 1️⃣ Fetch all stocks
@@ -6,91 +9,198 @@ const pool = require("../db/db");
  */
 const getAllStocks = async (req, res) => {
   try {
-    const result = await pool.query("SELECT * FROM stocks");
-    res.status(200).json(result.rows);
+    const result = await pool.query(`
+      SELECT 
+        symbol,
+        company_name,
+        ROUND(current_price::numeric, 2) AS current_price,
+        ROUND(pe_ratio::numeric, 2) AS pe_ratio,
+        ROUND(market_cap::numeric, 0) AS market_cap
+      FROM stocks
+      ORDER BY symbol ASC
+    `);
+
+    res.status(200).json({
+      count: result.rows.length,
+      data: result.rows,
+    });
+
   } catch (error) {
-    console.error("Error fetching stocks:", error);
+    console.error("Error fetching stocks:", error.message);
     res.status(500).json({ message: "Server error" });
   }
 };
 
 /**
- * 2️⃣ Screen stocks dynamically
+ * 2️⃣ Basic Screener
  * GET /api/stocks/screener
  */
 const screenStocks = async (req, res) => {
   try {
-    const {
-      maxPE,
-      maxPEG,
-      maxDebtToFCF,
-      revenueGrowth,
-      ebitdaGrowth,
-    } = req.query;
 
-    // Base query
-    let query = "SELECT * FROM stocks WHERE 1=1";
-    let values = [];
+    const { pe, price, marketCap } = req.query;
 
-    // ❌ Exclude consulting companies (business logic)
-    query += `
-      AND company_name NOT ILIKE '%Consultancy%'
-      AND company_name NOT ILIKE '%Services%'
+    let query = `
+      SELECT 
+        symbol,
+        company_name,
+        ROUND(current_price::numeric, 2) AS current_price,
+        ROUND(pe_ratio::numeric, 2) AS pe_ratio,
+        ROUND(market_cap::numeric, 0) AS market_cap
+      FROM stocks
+      WHERE 1=1
     `;
 
-    // 🔍 Apply filters dynamically
-    if (maxPE) {
-      values.push(maxPE);
-      query += ` AND pe_ratio <= $${values.length}`;
+    const values = [];
+    let index = 1;
+
+    if (pe) {
+      query += ` AND pe_ratio <= $${index++}`;
+      values.push(pe);
     }
 
-    if (maxPEG) {
-      values.push(maxPEG);
-      query += ` AND peg_ratio <= $${values.length}`;
+    if (price) {
+      query += ` AND current_price <= $${index++}`;
+      values.push(price);
     }
 
-    if (maxDebtToFCF) {
-      values.push(maxDebtToFCF);
-      query += ` AND debt_to_fcf <= $${values.length}`;
+    if (marketCap) {
+      query += ` AND market_cap >= $${index++}`;
+      values.push(marketCap);
     }
 
-    if (revenueGrowth !== undefined) {
-      values.push(revenueGrowth === "true");
-      query += ` AND revenue_growth = $${values.length}`;
-    }
-
-    if (ebitdaGrowth !== undefined) {
-      values.push(ebitdaGrowth === "true");
-      query += ` AND ebitda_growth = $${values.length}`;
-    }
+    query += " ORDER BY pe_ratio ASC";
 
     const result = await pool.query(query, values);
-    res.status(200).json(result.rows);
+
+    res.status(200).json({
+      count: result.rows.length,
+      data: result.rows,
+    });
+
   } catch (error) {
-    console.error("Error screening stocks:", error);
+    console.error("Error screening stocks:", error.message);
     res.status(500).json({ message: "Server error" });
   }
 };
-const buildStockQuery = require("../services/queryBuilder");
 
-const screenStocksAI = async (req, res) => {
+/**
+ * 3️⃣ Manual Screener
+ * POST /api/stocks/manual-screener
+ */
+const manualScreener = async (req, res) => {
+
   try {
-    // TEMP: manual rules (AI comes next)
-    const rules = req.body;
 
-    const { query, values } = buildStockQuery(rules);
+    const { pe_ratio } = req.body;
+
+    let query = `
+      SELECT 
+        symbol,
+        company_name,
+        sector,
+        current_price,
+        pe_ratio,
+        peg_ratio,
+        market_cap,
+        revenue_growth,
+        ebitda_growth,
+        debt_to_fcf,
+        volume
+      FROM stocks
+      WHERE 1=1
+    `;
+
+    const values = [];
+    let index = 1;
+
+    if (pe_ratio) {
+      query += ` AND pe_ratio <= $${index++}`;
+      values.push(pe_ratio);
+    }
+
+    query += ` ORDER BY pe_ratio ASC`;
+
     const result = await pool.query(query, values);
 
-    res.status(200).json(result.rows);
+    res.status(200).json({
+      success: true,
+      count: result.rows.length,
+      data: result.rows
+    });
+
   } catch (error) {
-    console.error("AI Screener Error:", error);
-    res.status(500).json({ message: "Server error" });
+
+    console.error("Manual Screener Error:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Manual screener failed"
+    });
+
   }
 };
 
+/**
+ * 4️⃣ AI Screener
+ * POST /api/stocks/ai-screener
+ */
+const screenStocksAI = async (req, res) => {
+
+  try {
+
+    const { query: userQuery } = req.body;
+
+    if (!userQuery) {
+      return res.status(400).json({
+        success: false,
+        message: "Query text is required"
+      });
+    }
+
+    // 1️⃣ English → DSL
+    const dsl = await parseEnglishToRules(userQuery);
+
+    // 2️⃣ Validate DSL using AJV
+    const isValid = validateDsl(dsl);
+
+    if (!isValid) {
+      console.error("DSL validation error:", validateDsl.errors);
+
+      return res.status(400).json({
+        success: false,
+        message: "Invalid DSL generated by AI",
+        errors: validateDsl.errors
+      });
+    }
+
+    // 3️⃣ DSL → SQL
+    const { query, values } = compileQuery(dsl);
+
+    const result = await pool.query(query, values);
+
+    res.status(200).json({
+      success: true,
+      filtersApplied: dsl,
+      count: result.rows.length,
+      data: result.rows
+    });
+
+  } catch (error) {
+
+    console.error("AI Screener Error:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+
+  }
+};
 
 module.exports = {
   getAllStocks,
   screenStocks,
   screenStocksAI,
+  manualScreener
 };

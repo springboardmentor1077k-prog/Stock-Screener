@@ -5,13 +5,31 @@ const {
   getAllStocks,
   screenStocks,
   screenStocksAI,
+  manualScreener
 } = require("../controllers/stockController");
 
-// Normal APIs
+/* ==========================
+   GET ALL STOCKS
+   GET /api/stocks
+========================== */
 router.get("/", getAllStocks);
+
+/* ==========================
+   BASIC SCREENER
+   GET /api/stocks/screener
+========================== */
 router.get("/screener", screenStocks);
 
-// AI-based screener
+/* ==========================
+   MANUAL SCREENER
+   POST /api/stocks/manual-screener
+========================== */
+router.post("/manual-screener", manualScreener);
+
+/* ==========================
+   AI SCREENER
+   POST /api/stocks/ai-screener
+========================== */
 router.post("/ai-screener", screenStocksAI);
 
 module.exports = router;
